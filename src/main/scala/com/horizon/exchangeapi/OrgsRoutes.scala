@@ -75,7 +75,7 @@ case class ChangeEntry(orgId: String, var resource: String, id: String, var oper
   def setOperation(newOp: String) {this.operation = newOp}
   def setResource(newResource: String) {this.resource = newResource}
 }
-case class ResourceChangesRespObject(changes: List[ChangeEntry], mostRecentChangeId: Int, exchangeVersion: String)
+case class ResourceChangesRespObject(changes: List[ChangeEntry], mostRecentChangeId: Int, maxChangeIdOfQuery: Int, exchangeVersion: String)
 
 /** Implementation for all of the /orgs routes */
 trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with AuthenticationSupport {
@@ -356,6 +356,7 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
     val changesList = ListBuffer[ChangeEntry]()
     var mostRecentChangeId = 0
     var entryCounter = 0
+    var maxChangeIdOfQuery = 0
     breakable {
       for(input <- inputList) { //this for loop should only ever be of size 2
         val changesMap = scala.collection.mutable.Map[String, ChangeEntry]() //using a Map allows us to avoid having a loop in a loop when searching the map for the resource id
@@ -374,18 +375,19 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
             }
            */
           val resChange = ResourceChangesInnerObject(entry._1, entry._8)
-          if(changesMap.isDefinedAt(entry._3)){  // using the map allows for better searching and entry
-            if(changesMap(entry._3).resourceChanges.last.changeId < entry._1){
+          if(changesMap.isDefinedAt(entry._3+"_"+entry._6)){  // using the map allows for better searching and entry
+            if(changesMap(entry._3+"_"+entry._6).resourceChanges.last.changeId < entry._1){
               // the entry we are looking at actually happened later than the last entry in resourceChanges
               // doing this check by changeId on the off chance two changes happen at the exact same time changeId tells which one is most updated
-              changesMap(entry._3).addToResourceChanges(resChange) // add the changeId and lastUpdated to the list of recent changes
-              changesMap(entry._3).setOperation(entry._7) // update the most recent operation performed
-              changesMap(entry._3).setResource(entry._6) // update exactly what resource was most recently touched
+              changesMap(entry._3+"_"+entry._6).addToResourceChanges(resChange) // add the changeId and lastUpdated to the list of recent changes
+              changesMap(entry._3+"_"+entry._6).setOperation(entry._7) // update the most recent operation performed
             }
           } else{
             val resChangeListBuffer = ListBuffer[ResourceChangesInnerObject](resChange)
-            changesMap(entry._3) = ChangeEntry(entry._2, entry._6, entry._3, entry._7, resChangeListBuffer)
+            changesMap(entry._3+"_"+entry._6) = ChangeEntry(entry._2, entry._6, entry._3, entry._7, resChangeListBuffer)
           }
+          //check maxChangeIdOfQuery
+          if (entry._1 > maxChangeIdOfQuery) {maxChangeIdOfQuery = entry._1}
         }
         // convert changesMap to ListBuffer[ChangeEntry]
         breakable {
@@ -399,7 +401,7 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
         if (entryCounter > maxResp) break // if we are over the count of allowed entries just stop and return the list as is
       }
     }
-    ResourceChangesRespObject(changesList.toList, mostRecentChangeId, exchangeVersion)
+    ResourceChangesRespObject(changesList.toList, mostRecentChangeId, maxChangeIdOfQuery, exchangeVersion)
   }
 
   /* ====== POST /orgs/{orgid}/changes ================================ */
@@ -435,12 +437,12 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
       r <- ResourceChangesTQ.rows.filter(_.orgId === orgId).filter(_.lastUpdated >= lastTime).filter(_.changeId >= resourceRequest.changeId)
     } yield (r.changeId, r.orgId, r.id, r.category, r.public, r.resource, r.operation, r.lastUpdated)
 
-    val qIBM = for {
-      r <- ResourceChangesTQ.rows.filter(_.orgId === "IBM").filter(_.public === "true").filter(_.lastUpdated >= lastTime).filter(_.changeId >= resourceRequest.changeId)
+    val qPublic = for {
+      r <- ResourceChangesTQ.rows.filter(_.public === "true").filter(_.lastUpdated >= lastTime).filter(_.changeId >= resourceRequest.changeId)
     } yield (r.changeId, r.orgId, r.id, r.category, r.public, r.resource, r.operation, r.lastUpdated)
 
     var qOrgResp : scala.Seq[(Int, String, String, String, String, String, String, String)] = null
-    var qIBMResp : scala.Seq[(Int, String, String, String, String, String, String, String)] = null
+    var qPublicResp : scala.Seq[(Int, String, String, String, String, String, String, String)] = null
 
     db.run(qOrg.result.asTry.flatMap({ xs =>
       // Check if pattern exists, then get services referenced
@@ -449,7 +451,7 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
       xs match {
         case Success(qOrgResult) =>
           qOrgResp = qOrgResult
-          qIBM.result.asTry
+          qPublic.result.asTry
         case Failure(t) => DBIO.failed(t).asTry
       }
     }).flatMap({ xs =>
@@ -457,7 +459,7 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
       /*TODO: Decide if we want to keep this log statement, it can get pretty long*/
     logger.debug("POST /orgs/" + orgId + "/changes public changes in IBM org: " + xs.toString)
       xs match {
-        case Success(qIBMResult) => qIBMResp = qIBMResult
+        case Success(qIBMResult) => qPublicResp = qIBMResult
           val id = orgId + "/" + ident.getIdentity
           ident match {
             case _: INode =>
@@ -479,7 +481,7 @@ trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with
           // heartbeat worked
           resp.setStatus(HttpCode.POST_OK)
           // function here to format output
-          write(buildResourceChangesResponse(qOrgResp, qIBMResp, resourceRequest.maxRecords))
+          buildResourceChangesResponse(qOrgResp, qPublicResp, resourceRequest.maxRecords)
         } else {
           // heartbeat failed
           resp.setStatus(HttpCode.NOT_FOUND)

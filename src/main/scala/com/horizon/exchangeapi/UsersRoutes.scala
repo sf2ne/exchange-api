@@ -11,6 +11,7 @@ import de.heikoseeberger.akkahttpjackson._
 import io.swagger.v3.oas.annotations.parameters.RequestBody
 import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.{ Content, Schema }
+import org.json4s.jackson.Serialization.{read, write}
 import io.swagger.v3.oas.annotations._
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.horizon.exchangeapi.tables._
@@ -80,7 +81,6 @@ final case class ChangePwRequest(newPassword: String) {
 class UsersRoutes(implicit val system: ActorSystem) extends JacksonSupport with AuthenticationSupport {
   def db: Database = ExchangeApiApp.getDb
   lazy implicit val logger: LoggingAdapter = Logging(system, classOf[OrgsRoutes])
-  //protected implicit def jsonFormats: Formats
 
   def routes: Route = usersGetRoute ~ userGetRoute ~ userPostRoute ~ userPutRoute ~ userPatchRoute ~ userDeleteRoute ~ userConfirmRoute ~ userChangePwRoute
 
@@ -171,17 +171,27 @@ class UsersRoutes(implicit val system: ActorSystem) extends JacksonSupport with 
   def userPostRoute: Route = (post & path("orgs" / Segment / "users" / Segment) & entity(as[PostPutUsersRequest])) { (orgid, username, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgid/users/$username")
     val compositeId = OrgAndId(orgid, username).toString
+    var userSuccess: Any = null
     exchAuth(TUser(compositeId), Access.CREATE) { ident =>
       validateWithMsg(reqBody.getAnyProblem(ident.isAdmin)) {
         complete({
           val updatedBy = ident match { case IUser(identCreds) => identCreds.id; case _ => "" }
           val hashedPw = Password.hash(reqBody.password)
-          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).insertUser().asTry).map({ xs =>
-            logger.debug("POST /orgs/" + orgid + "/users/" + username + " result: " + xs.toString)
+          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).insertUser().asTry.flatMap({
+            case Success(v) =>
+              // Add the resource to the resourcechanges table
+              userSuccess = v
+              logger.debug("POST /orgs/" + orgid + "/users/" + username + " result: " + v)
+              val changes = Map("username" -> compositeId, "password" -> hashedPw, "userAdmin" -> reqBody.admin)
+              val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+              authChange.insert.asTry
+            case Failure(t) => DBIO.failed(t).asTry
+          })).map({ xs =>
+            logger.debug("POST /orgs/" + orgid + "/users/" + username + " added into authchanges table: " + xs.toString)
             xs match {
-              case Success(v) =>
+              case Success(_) =>
                 AuthCache.putUserAndIsAdmin(compositeId, hashedPw, reqBody.password, reqBody.admin)
-                (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.added.successfully", v)))
+                (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.added.successfully", userSuccess)))
               case Failure(t) =>
                 (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("user.not.added", t.toString)))
             }

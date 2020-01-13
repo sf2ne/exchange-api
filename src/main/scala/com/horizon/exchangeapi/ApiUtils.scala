@@ -87,6 +87,11 @@ object ResourceChangeConfig {
   val DELETED = "deleted"
 }
 
+object AuthenticationChangeConfig {
+  val CREATE_UPDATE = "create/update"
+  val DELETED = "deleted"
+}
+
 trait ExchangeRejection extends Rejection {
   private implicit val formats = DefaultFormats
 

@@ -120,7 +120,7 @@ class ResourceChanges(tag: Tag) extends Table[ResourceChangeRow](tag, "resourcec
 
 }
 
-// Instance to access the orgs table
+// Instance to access the resourcechanges table
 object ResourceChangesTQ {
   val rows = TableQuery[ResourceChanges]
 
@@ -152,3 +152,65 @@ object ResourceChangesTQ {
 }
 
 final case class ResourceChange(changeId: Int, orgId: String, id: String, category: String, public: String, resource: String, operation: String, lastUpdated: String)
+
+/** Contains the object representations of the DB tables related to authentication changes. */
+final case class AuthenticationChangeRow(changeId: Int, orgId: String, id: String, resource: String, operation: String, changes: String, lastUpdated: String) {
+  protected implicit val jsonFormats: Formats = DefaultFormats
+
+  def toAuthenticationChange: AuthenticationChange = AuthenticationChange(changeId, orgId, id, resource, operation, changes, lastUpdated)
+
+  // update returns a DB action to update this row
+  def update: DBIO[_] = (for { m <- AuthenticationChangesTQ.rows if m.changeId === changeId} yield m).update(this)
+
+  // insert returns a DB action to insert this row
+  def insert: DBIO[_] = AuthenticationChangesTQ.rows += this
+
+  // Returns a DB action to insert or update this row
+  def upsert: DBIO[_] = AuthenticationChangesTQ.rows.insertOrUpdate(this)
+}
+
+/** Mapping of the orgs db table to a scala class */
+class AuthenticationChanges(tag: Tag) extends Table[AuthenticationChangeRow](tag, "authchanges") {
+  def changeId = column[Int]("changeid", O.PrimaryKey, O.AutoInc)
+  def orgId = column[String]("orgid")
+  def id = column[String]("id")
+  def resource = column[String]("resource")
+  def operation = column[String]("operation")
+  def changes = column[String]("changes")
+  def lastUpdated = column[String]("lastupdated")
+  // this describes what you get back when you return rows from a query
+  def * = (changeId, orgId, id, resource, operation, changes, lastUpdated) <> (AuthenticationChangeRow.tupled, AuthenticationChangeRow.unapply)
+  def orgidKey = foreignKey("orgid_fk", orgId, OrgsTQ.rows)(_.orgid, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
+
+}
+
+// Instance to access the authchanges table
+object AuthenticationChangesTQ {
+  val rows = TableQuery[AuthenticationChanges]
+
+  def getChangeId(changeid: Int) = rows.filter(_.changeId === changeid).map(_.changeId)
+  def getOrgid(changeid: Int) = rows.filter(_.changeId === changeid).map(_.orgId)
+  def getId(changeid: Int) = rows.filter(_.changeId === changeid).map(_.id)
+  def getResource(changeid: Int) = rows.filter(_.changeId === changeid).map(_.resource)
+  def getOperation(changeid: Int) = rows.filter(_.changeId === changeid).map(_.operation)
+  def getChanges(changeid: Int) = rows.filter(_.changeId === changeid).map(_.changes)
+  def getLastUpdated(changeid: Int) = rows.filter(_.changeId === changeid).map(_.lastUpdated)
+
+  /** Returns a query for the specified org attribute value. Returns null if an invalid attribute name is given. */
+  def getAttribute(changeid: Int, attrName: String): Query[_,_,Seq] = {
+    val filter = rows.filter(_.changeId === changeid)
+    // According to 1 post by a slick developer, there is not yet a way to do this properly dynamically
+    return attrName match {
+      case "changeId" => filter.map(_.changeId)
+      case "orgId" => filter.map(_.orgId)
+      case "id" => filter.map(_.id)
+      case "resource" => filter.map(_.resource)
+      case "operation" => filter.map(_.operation)
+      case "changes" => filter.map(_.changes)
+      case "lastUpdated" => filter.map(_.lastUpdated)
+      case _ => null
+    }
+  }
+}
+
+final case class AuthenticationChange(changeId: Int, orgId: String, id: String, resource: String, operation: String, changes: String, lastUpdated: String)

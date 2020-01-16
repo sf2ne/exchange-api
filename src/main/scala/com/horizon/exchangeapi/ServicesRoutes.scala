@@ -3,7 +3,7 @@ package com.horizon.exchangeapi
 
 import javax.ws.rs._
 import akka.actor.ActorSystem
-import akka.event.{Logging, LoggingAdapter}
+import akka.event.LoggingAdapter
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -14,7 +14,9 @@ import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.{Content, Schema}
 import io.swagger.v3.oas.annotations._
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
+
+//import scala.concurrent.ExecutionContext.Implicits.global
 import com.horizon.exchangeapi.tables._
 import org.json4s._
 import java.net.{MalformedURLException, URL}
@@ -168,12 +170,14 @@ final case class PostPutServiceDockAuthRequest(registry: String, username: Optio
 
 /** Implementation for all of the /orgs/{orgid}/services routes */
 @Path("/v1/orgs/{orgid}/services")
-class ServicesRoutes(implicit val system: ActorSystem) extends JacksonSupport with AuthenticationSupport {
-  def db: Database = ExchangeApiApp.getDb
-  lazy implicit val logger: LoggingAdapter = Logging(system, classOf[OrgsRoutes])
-  //protected implicit def jsonFormats: Formats
+trait ServicesRoutes extends JacksonSupport with AuthenticationSupport {
+  // Will pick up these values when it is mixed in with ExchangeApiApp
+  def db: Database
+  def system: ActorSystem
+  def logger: LoggingAdapter
+  implicit def executionContext: ExecutionContext
 
-  def routes: Route = servicesGetRoute ~ serviceGetRoute ~ servicePostRoute ~ servicePutRoute ~ servicePatchRoute ~ serviceDeleteRoute ~ serviceGetPolicyRoute ~ servicePutPolicyRoute ~ serviceDeletePolicyRoute ~ serviceGetKeysRoute ~ serviceGetKeyRoute ~ servicePutKeyRoute ~ serviceDeleteKeysRoute ~ serviceDeleteKeyRoute ~ serviceGetDockauthsRoute ~ serviceGetDockauthRoute ~ servicePostDockauthRoute ~ servicePutDockauthRoute ~ serviceDeleteDockauthsRoute ~ serviceDeleteDockauthRoute
+  def servicesRoutes: Route = servicesGetRoute ~ serviceGetRoute ~ servicePostRoute ~ servicePutRoute ~ servicePatchRoute ~ serviceDeleteRoute ~ serviceGetPolicyRoute ~ servicePutPolicyRoute ~ serviceDeletePolicyRoute ~ serviceGetKeysRoute ~ serviceGetKeyRoute ~ servicePutKeyRoute ~ serviceDeleteKeysRoute ~ serviceDeleteKeyRoute ~ serviceGetDockauthsRoute ~ serviceGetDockauthRoute ~ servicePostDockauthRoute ~ servicePutDockauthRoute ~ serviceDeleteDockauthsRoute ~ serviceDeleteDockauthRoute
 
   // ====== GET /orgs/{orgid}/services ================================
   @GET
@@ -1097,7 +1101,7 @@ class ServicesRoutes(implicit val system: ActorSystem) extends JacksonSupport wi
       validateWithMsg(reqBody.getAnyProblem(None)) {
         complete({
           val dockAuthId = 0      // the db will choose a new id on insert
-          var resultNum = 2
+          var resultNum = -1
           db.run(reqBody.getDupDockAuth(compositeId).result.asTry.flatMap({
             case Success(v) =>
               logger.debug("POST /orgs/" + orgid + "/services" + service + "/dockauths find duplicate: " + v)
@@ -1127,7 +1131,7 @@ class ServicesRoutes(implicit val system: ActorSystem) extends JacksonSupport wi
               resultNum match {
                 case 0 => (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("duplicate.dockauth.resource.already.exists"))) // we don't expect this, but it is possible, but only means that the lastUpdated field didn't get updated
                 case 1 => (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("dockauth.resource.updated"))) //someday: this can be 2 cases i dont know how to distinguish between: A) the 1st time anyone added a dockauth, or B) a dup was found and we updated it
-                case 2 => (HttpCode.INTERNAL_ERROR, ApiResponse(ApiRespType.INTERNAL_ERROR, ExchMsg.translate("api.internal.error"))) // this is meant to catch the case where the resultNum variable for some reason isn't set
+                case -1 => (HttpCode.INTERNAL_ERROR, ApiResponse(ApiRespType.INTERNAL_ERROR, ExchMsg.translate("dockauth.unexpected"))) // this is meant to catch the case where the resultNum variable for some reason isn't set
                 case _ => (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("dockauth.num.added", resultNum))) // we did not find a dup, so this is the dockauth id that was added
               }
             case Failure(t) =>

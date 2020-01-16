@@ -1,19 +1,21 @@
 package com.horizon.exchangeapi.auth
 
-import java.io.{ BufferedInputStream, File, FileInputStream }
-import java.security.cert.{ Certificate, CertificateFactory }
+import java.io.{BufferedInputStream, File, FileInputStream}
+import java.security.cert.{Certificate, CertificateFactory}
 import java.util.concurrent.TimeUnit
 import java.security.KeyStore
 
 import com.google.common.cache.CacheBuilder
 import com.horizon.exchangeapi._
-import com.horizon.exchangeapi.tables.{ OrgsTQ, UserRow, UsersTQ }
-import javax.net.ssl.{ SSLContext, SSLSocketFactory, TrustManagerFactory }
+import com.horizon.exchangeapi.tables.{OrgsTQ, UserRow, UsersTQ}
+import javax.net.ssl.{SSLContext, SSLSocketFactory, TrustManagerFactory}
 import javax.security.auth._
 import javax.security.auth.callback._
 import javax.security.auth.spi.LoginModule
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
+
+import scala.concurrent.ExecutionContext
 //import org.slf4j.{ Logger, LoggerFactory }
 import scalacache._
 import scalacache.guava.GuavaCache
@@ -24,11 +26,13 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.{ Failure, Success, Try }
 
+// Credentials specified in the client request
 case class IamAuthCredentials(org: String, keyType: String, key: String) {
   def cacheKey = org + "/" + keyType + ":" + key
 }
 case class IamToken(accessToken: String, tokenType: Option[String] = None)
 
+// Info retrieved about the user from IAM (using the iam key or token).
 // For both IBM Cloud and ICP. All the rest apis that use this must be able to parse their results into this class.
 // The account field is set when using IBM Cloud, iss is set when using ICP.
 case class IamUserInfo(account: Option[IamAccount], sub: Option[String], iss: Option[String], active: Option[Boolean]) { // Note: used to use the email field for ibm cloud, but switched to sub because it is common to both
@@ -46,6 +50,7 @@ case class ClusterConfigResponse(cluster_name: String, cluster_url: String, clus
 //s"ICP IAM authentication succeeded, but the org specified in the request ($requestOrg) does not match the org associated with the ICP credentials ($userCredsOrg)"
 
 // These error msgs are matched by UsersSuite.scala, so change them there if you change them here
+//todo: move these to Exceptions.scala and have them extend AuthException directly
 case class OrgNotFound(authInfo: IamAuthCredentials)
   extends UserFacingError(ExchMsg.translate("org.not.found.user.facing.error", authInfo.org))
 case class IncorrectOrgFound(orgAcctId: String, userInfo: IamUserInfo)
@@ -138,7 +143,8 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
     //val creds = credentials(reqInfo)
     val creds = reqInfo.creds
     val (org, id) = IbmCloudAuth.compositeIdSplit(creds.id)
-    if ((id == "iamapikey" || id == "iamtoken") && creds.token.nonEmpty) Success(IamAuthCredentials(org, id, creds.token))
+    if (org == "") Failure(new OrgNotSpecifiedException)
+    else if ((id == "iamapikey" || id == "iamtoken") && creds.token.nonEmpty) Success(IamAuthCredentials(org, id, creds.token))
     else Failure(new NotIbmCredsException)
   }
 }
@@ -147,7 +153,8 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
 object IbmCloudAuth {
   import com.horizon.exchangeapi.tables.ExchangePostgresProfile.api._
 
-  import scala.concurrent.ExecutionContext.Implicits.global
+  //import scala.concurrent.ExecutionContext.Implicits.global
+  implicit def executionContext: ExecutionContext = ExchConfig.defaultExecutionContext
 
   private var db: Database = _
   private var sslSocketFactory: SSLSocketFactory = _
@@ -403,7 +410,8 @@ object IbmCloudAuth {
     awaitResult
   }
 
-  // Get the associated ibm cloud id of the org that the client requested in the exchange api
+  // Get the associated ibm cloud id of the org that was specified in the client request credentials
+  //todo: add a db query that will work for icp (e.g. get the orgid) so in verify org we can tell in both cases if the org was not found in the db
   private def fetchOrg(org: String) = {
     logger.debug("Fetching org: " + org)
     OrgsTQ.getOrgid(org)

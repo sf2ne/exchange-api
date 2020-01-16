@@ -121,8 +121,7 @@ export EXCHANGE_IAM_ACCOUNT=myibmcloudaccountid
 - Uses the sbt-native-packager plugin. See the above URL for what to add to your sbt-related files
 - Build docker image: `sbt docker:publishLocal`
 - Manually build and run the exchange executable
-  - `sbt stage`
-  - `./target/universal/stage/bin/exchange-api`
+  - `make runexecutable`
 - To see the dockerfile that gets created:
   - `sbt docker:stage`
   - `cat target/docker/stage/Dockerfile`
@@ -228,6 +227,12 @@ Now you can disable root by setting `api.root.enabled` to `false` in `/etc/horiz
 ## Changes in 2.5.0
 
 - Issue 232: Notification Framework Authentication Changes Table
+
+## Changes in 2.5.0
+
+- Made the IP and port the exchange listens on configurable in `config.json`
+- Added graceful shutdown, and made wait time for in-flight requests configurable
+- Enabled passing args to the exchange svr JVM by setting JAVA_OPTS
 
 ## Changes in 2.4.0
 

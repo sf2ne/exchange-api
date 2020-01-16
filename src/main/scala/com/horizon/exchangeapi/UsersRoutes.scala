@@ -3,19 +3,22 @@ package com.horizon.exchangeapi
 
 import javax.ws.rs._
 import akka.actor.ActorSystem
-import akka.event.{ Logging, LoggingAdapter }
+import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
+import com.horizon.exchangeapi.auth.DBProcessingError
 import de.heikoseeberger.akkahttpjackson._
 import io.swagger.v3.oas.annotations.parameters.RequestBody
 import io.swagger.v3.oas.annotations.enums.ParameterIn
-import io.swagger.v3.oas.annotations.media.{ Content, Schema }
+import io.swagger.v3.oas.annotations.media.{Content, Schema}
 import org.json4s.jackson.Serialization.{read, write}
 import io.swagger.v3.oas.annotations._
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import com.horizon.exchangeapi.tables._
 import org.json4s._
+
 import scala.collection.immutable._
 import scala.util._
 
@@ -224,16 +227,26 @@ class UsersRoutes(implicit val system: ActorSystem) extends JacksonSupport with 
         complete({
           val updatedBy = ident match { case IUser(identCreds) => identCreds.id; case _ => "" }
           val hashedPw = Password.hash(reqBody.password)
-          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).updateUser().asTry).map({ xs =>
-            logger.debug("PUT /orgs/" + orgid + "/users/" + username + " result: " + xs.toString)
+          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).updateUser().asTry.flatMap({
+            case Success(n) =>
+              // Add the resource to the authchanges table
+              if(n.asInstanceOf[Int] > 0) {
+                logger.debug("PUT /orgs/" + orgid + "/users/" + username + " result: " + n.toString)
+                val changes = Map("username" -> compositeId, "password" -> hashedPw, "userAdmin" -> reqBody.admin)
+                val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+                authChange.insert.asTry
+              } else {
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+              }
+            case Failure(t) => DBIO.failed(t).asTry
+          })).map({ xs =>
+            logger.debug("PUT /orgs/" + orgid + "/users/" + username + " put in authchanges table: " + xs.toString)
             xs match {
-              case Success(n) =>
-                if (n.asInstanceOf[Int] > 0) {
-                  AuthCache.putUserAndIsAdmin(compositeId, hashedPw, reqBody.password, reqBody.admin)
-                  (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.updated.successfully")))
-                } else {
-                  (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
-                }
+              case Success(_) =>
+                AuthCache.putUserAndIsAdmin(compositeId, hashedPw, reqBody.password, reqBody.admin)
+                (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.updated.successfully")))
+              case Failure(t: DBProcessingError) =>
+                t.toComplete
               case Failure(t) =>
                 (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("user.not.updated", t.toString)))
             }

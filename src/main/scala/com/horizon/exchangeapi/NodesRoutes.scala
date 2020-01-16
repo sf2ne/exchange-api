@@ -484,10 +484,18 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
               val nodeChange = ResourceChangeRow(0, orgid, id, "node", "false", "node", ResourceChangeConfig.CREATEDMODIFIED, ApiTime.nowUTC)
               nodeChange.insert.asTry
             case Failure(t) => DBIO.failed(t).asTry
+          }).flatMap({
+            case Success(v) =>
+              // Add the resource to the authchanges table
+              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " updating resource status table: " + v)
+              val changes = Map("nodeId" -> compositeId, "nodeToken" -> hashedTok, "owner" -> owner)
+              val authChange = AuthenticationChangeRow(0, orgid, compositeId, "node", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+              authChange.insert.asTry
+            case Failure(t) => DBIO.failed(t).asTry
           })).map({
             case Success(v) =>
               // Check creation/update of node, and other errors
-              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " updating resource status table: " + v)
+              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " updating authchanges table: " + v)
               AuthCache.putNodeAndOwner(compositeId, hashedTok, reqBody.token, owner)
               //AuthCache.ids.putNode(id, hashedTok, node.token)
               //AuthCache.nodesOwner.putOne(id, owner)
@@ -573,6 +581,17 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
                 logger.debug("PATCH /orgs/" + orgid + "/nodes/" + id + " result: " + v)
                 val nodeChange = ResourceChangeRow(0, orgid, id, "node", "false", "node", ResourceChangeConfig.MODIFIED, ApiTime.nowUTC)
                 nodeChange.insert.asTry
+              case Failure(t) => DBIO.failed(t).asTry
+            }).flatMap({
+              case Success(v) =>
+                // Add the resource to the authchanges table
+                logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " updating resource status table: " + v)
+                if (reqBody.token.isDefined) {
+                  // the only thing you can patch on a node that we care to keep in authchanges is token
+                  val changes = Map("nodeId" -> compositeId, "nodeToken" -> hashedPw) // patch doesn't update owner
+                  val authChange = AuthenticationChangeRow(0, orgid, compositeId, "node", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+                  authChange.insert.asTry
+                } else { DBIO.successful(1).asTry }
               case Failure(t) => DBIO.failed(t).asTry
             })).map({
               case Success(v) =>
@@ -680,9 +699,16 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
               DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("node.not.found", compositeId))).asTry
             }
           case Failure(t) => DBIO.failed(t).asTry
+        }).flatMap({
+          case Success(v) =>
+            // Add the resource to the authchanges table
+            logger.debug(s"DELETE /orgs/$orgid/nodes/$id updated in changes table: $v")
+            val authChange = AuthenticationChangeRow(0, orgid, compositeId, "node", AuthenticationChangeConfig.DELETED, "", ApiTime.nowUTC)
+            authChange.insert.asTry
+          case Failure(t) => DBIO.failed(t).asTry
         })).map({
           case Success(v) =>
-            logger.debug(s"DELETE /orgs/$orgid/nodes/$id updated in changes table: $v")
+            logger.debug(s"DELETE /orgs/$orgid/nodes/$id updated in authchanges table: $v")
             (HttpCode.DELETED, ApiResponse(ApiRespType.OK, ExchMsg.translate("node.deleted")))
           case Failure(t: DBProcessingError) =>
             t.toComplete

@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody
 import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.{Content, Schema}
 import io.swagger.v3.oas.annotations._
+import org.json4s.jackson.Serialization.write
 
 import scala.concurrent.ExecutionContext
 
@@ -271,9 +272,17 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
               val agbotChange = ResourceChangeRow(0, orgid, id, "agbot", "false", "agbot", ResourceChangeConfig.CREATEDMODIFIED, ApiTime.nowUTC)
               agbotChange.insert.asTry
             case Failure(t) => DBIO.failed(t).asTry
+          }).flatMap({
+            case Success(v) =>
+              // Add the resource to the authchanges table
+              logger.debug(s"PUT /orgs/$orgid/agbots/$id updated in changes table: $v")
+              val changes = Map("agbotId" -> compositeId, "agbotToken" -> hashedTok, "owner" -> owner)
+              val authChange = AuthenticationChangeRow(0, orgid, compositeId, "agbot", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+              authChange.insert.asTry
+            case Failure(t) => DBIO.failed(t).asTry
           })).map({
             case Success(v) =>
-              logger.debug(s"PUT /orgs/$orgid/agbots/$id updated in changes table: $v")
+              logger.debug(s"PUT /orgs/$orgid/agbots/$id added to authchanges: $v")
               AuthCache.putAgbotAndOwner(compositeId, hashedTok, reqBody.token, owner)
               (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("agbot.added.updated")))
             case Failure(t: DBProcessingError) =>
@@ -315,16 +324,26 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
               // Add the resource to the resourcechanges table
               logger.debug(s"PATCH /orgs/$orgid/agbots/$id result: $v")
               if (v.asInstanceOf[Int] > 0) { // there were no db errors, but determine if it actually found it or not
-                if (reqBody.token.isDefined) AuthCache.putAgbot(compositeId, hashedTok, reqBody.token.get) // We do not need to run putOwner because patch does not change the owner
                 val agbotChange = ResourceChangeRow(0, orgid, id, "agbot", "false", "agbot", ResourceChangeConfig.MODIFIED, ApiTime.nowUTC)
                 agbotChange.insert.asTry
               } else {
                 DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("agbot.not.found", compositeId))).asTry
               }
             case Failure(t) => DBIO.failed(t).asTry
+          }).flatMap({
+            case Success(v) =>
+              // Add the resource to the authchanges table
+              logger.debug(s"PUT /orgs/$orgid/agbots/$id updated in changes table: $v")
+              if (reqBody.token.isDefined) {
+                AuthCache.putAgbot(compositeId, hashedTok, reqBody.token.get) // We do not need to run putOwner because patch does not change the owner
+                val changes = Map("agbotToken" -> hashedTok)
+                val authChange = AuthenticationChangeRow(0, orgid, compositeId, "agbot", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+                authChange.insert.asTry
+              } else { DBIO.successful(1).asTry }
+            case Failure(t) => DBIO.failed(t).asTry
           })).map({
             case Success(v) =>
-              logger.debug(s"PATCH /orgs/$orgid/agbots/$id updated in changes table: $v")
+              logger.debug(s"PATCH /orgs/$orgid/agbots/$id updated in authchanges table: $v")
               (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("agbot.attribute.updated", attrName, compositeId)))
             case Failure(t: DBProcessingError) =>
               t.toComplete
@@ -365,9 +384,16 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
               DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("agbot.not.found", compositeId))).asTry
             }
           case Failure(t) => DBIO.failed(t).asTry
+        }).flatMap({
+          case Success(v) =>
+            // Add the resource to the authchanges table
+            logger.debug(s"DELETE /orgs/$orgid/agbots/$id updated in changes table: $v")
+            val authChange = AuthenticationChangeRow(0, orgid, compositeId, "agbot", AuthenticationChangeConfig.DELETED, "", ApiTime.nowUTC)
+            authChange.insert.asTry
+          case Failure(t) => DBIO.failed(t).asTry
         })).map({
           case Success(v) =>
-            logger.debug(s"DELETE /orgs/$orgid/agbots/$id updated in changes table: $v")
+            logger.debug(s"DELETE /orgs/$orgid/agbots/$id updated in authchanges table: $v")
             (HttpCode.DELETED, ApiResponse(ApiRespType.OK, ExchMsg.translate("agbot.deleted")))
           case Failure(t: DBProcessingError) =>
             t.toComplete

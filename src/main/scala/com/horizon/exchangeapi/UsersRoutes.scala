@@ -234,8 +234,8 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
           db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).updateUser().asTry.flatMap({
             case Success(n) =>
               // Add the resource to the authchanges table
+              logger.debug("PUT /orgs/" + orgid + "/users/" + username + " result: " + n.toString)
               if(n.asInstanceOf[Int] > 0) {
-                logger.debug("PUT /orgs/" + orgid + "/users/" + username + " result: " + n.toString)
                 val changes = Map("username" -> compositeId, "password" -> hashedPw, "userAdmin" -> reqBody.admin)
                 val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
                 authChange.insert.asTry
@@ -285,17 +285,30 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
           val hashedPw = if (reqBody.password.isDefined) Password.hash(reqBody.password.get) else "" // hash the pw if that is what is being updated
           val (action, attrName) = reqBody.getDbUpdate(compositeId, orgid, updatedBy, hashedPw)
           if (action == null) (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("no.valid.agbot.attr.specified")))
-          else db.run(action.transactionally.asTry).map({ xs =>
-            logger.debug("PATCH /orgs/" + orgid + "/users/" + username + " result: " + xs.toString)
+          else db.run(action.transactionally.asTry.flatMap({
+            case Success(n) =>
+              // Add the resource to the authchanges table
+              logger.debug("PATCH /orgs/" + orgid + "/users/" + username + " result: " + n.toString)
+              if(n.asInstanceOf[Int] > 0) {
+                var changes = Map()
+                // The only fields you can patch are password, admin, and email. We don't log that emails have changes
+                if (reqBody.password.isDefined) changes = Map("password" -> hashedPw)
+                if (reqBody.admin.isDefined) changes = Map("userAdmin" -> reqBody.admin)
+                val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+                authChange.insert.asTry
+              } else {
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+              }
+            case Failure(t) => DBIO.failed(t).asTry
+          })).map({ xs =>
+            logger.debug("PATCH /orgs/" + orgid + "/users/" + username + " added to auth changes table: " + xs.toString)
             xs match {
-              case Success(n) =>
-                if (n.asInstanceOf[Int] > 0) {
-                  if (reqBody.password.isDefined) AuthCache.putUser(compositeId, hashedPw, reqBody.password.get)
-                  if (reqBody.admin.isDefined) AuthCache.putUserIsAdmin(compositeId, reqBody.admin.get)
-                  (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.attr.updated", attrName, compositeId)))
-                } else {
-                  (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
-                }
+              case Success(_) =>
+                if (reqBody.password.isDefined) AuthCache.putUser(compositeId, hashedPw, reqBody.password.get)
+                if (reqBody.admin.isDefined) AuthCache.putUserIsAdmin(compositeId, reqBody.admin.get)
+                (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.attr.updated", attrName, compositeId)))
+              case Failure(t: DBProcessingError) =>
+                t.toComplete
               case Failure(t) =>
                 (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("user.not.updated", t.toString)))
             }
@@ -323,13 +336,24 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TUser(compositeId), Access.WRITE) { _ =>
       complete({
         // remove does *not* throw an exception if the key does not exist
-        db.run(UsersTQ.getUser(compositeId).delete.transactionally.asTry).map({
-          case Success(v) => // there were no db errors, but determine if it actually found it or not
+        db.run(UsersTQ.getUser(compositeId).delete.transactionally.asTry.flatMap({
+          case Success(v) =>
+            // Add the resource to the authchanges table
             logger.debug(s"DELETE /orgs/$orgid/users/$username result: $v")
-            if (v > 0) {
-              AuthCache.removeUserAndIsAdmin(compositeId)
-              (HttpCode.DELETED, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.deleted")))
-            } else (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+            if(v > 0) {
+              val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.DELETED, "", ApiTime.nowUTC)
+              authChange.insert.asTry
+            } else {
+              DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+            }
+          case Failure(t) => DBIO.failed(t).asTry
+        })).map({
+          case Success(_) => // there were no db errors, but determine if it actually found it or not
+            logger.debug(s"DELETE /orgs/$orgid/users/$username added to authchanges table")
+            AuthCache.removeUserAndIsAdmin(compositeId)
+            (HttpCode.DELETED, ApiResponse(ApiRespType.OK, ExchMsg.translate("user.deleted")))
+          case Failure(t: DBProcessingError) =>
+            t.toComplete
           case Failure(t) =>
             (HttpCode.INTERNAL_ERROR, ApiResponse(ApiRespType.INTERNAL_ERROR, ExchMsg.translate("user.not.deleted", compositeId, t.toString)))
         })
@@ -388,16 +412,27 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
         complete({
           val hashedPw = Password.hash(reqBody.newPassword)
           val action = reqBody.getDbUpdate(compositeId, orgid, hashedPw)
-          db.run(action.transactionally.asTry).map({ xs =>
-            logger.debug("POST /orgs/" + orgid + "/users/" + username + "/changepw result: " + xs.toString)
+          db.run(action.transactionally.asTry.flatMap({
+            case Success(n) =>
+              // Add the resource to the authchanges table
+              logger.debug("POST /orgs/" + orgid + "/users/" + username + "/changepw result: " + n.toString)
+              if(n.asInstanceOf[Int] > 0) {
+                // The only fields you can patch are password, admin, and email. We don't log that emails have changes
+                val changes = Map("password" -> hashedPw)
+                val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
+                authChange.insert.asTry
+              } else {
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+              }
+            case Failure(t) => DBIO.failed(t).asTry
+          })).map({ xs =>
+            logger.debug("POST /orgs/" + orgid + "/users/" + username + "/changepw added to auth changes table")
             xs match {
-              case Success(n) =>
-                if (n.asInstanceOf[Int] > 0) {
-                  AuthCache.putUser(compositeId, hashedPw, reqBody.newPassword)
-                  (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("password.updated.successfully")))
-                } else {
-                  (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
-                }
+              case Success(_) =>
+                AuthCache.putUser(compositeId, hashedPw, reqBody.newPassword)
+                (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("password.updated.successfully")))
+              case Failure(t: DBProcessingError) =>
+                t.toComplete
               case Failure(t) =>
                 (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("user.password.not.updated", compositeId, t.toString)))
             }

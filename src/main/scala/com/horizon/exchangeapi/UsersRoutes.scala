@@ -240,7 +240,7 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
                 val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
                 authChange.insert.asTry
               } else {
-                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId))).asTry
               }
             case Failure(t) => DBIO.failed(t).asTry
           })).map({ xs =>
@@ -290,14 +290,14 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
               // Add the resource to the authchanges table
               logger.debug("PATCH /orgs/" + orgid + "/users/" + username + " result: " + n.toString)
               if(n.asInstanceOf[Int] > 0) {
-                var changes = Map()
+                var changes : Map[String, Any] = null
                 // The only fields you can patch are password, admin, and email. We don't log that emails have changes
                 if (reqBody.password.isDefined) changes = Map("password" -> hashedPw)
                 if (reqBody.admin.isDefined) changes = Map("userAdmin" -> reqBody.admin)
                 val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
                 authChange.insert.asTry
               } else {
-                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId))).asTry
               }
             case Failure(t) => DBIO.failed(t).asTry
           })).map({ xs =>
@@ -344,7 +344,8 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
               val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.DELETED, "", ApiTime.nowUTC)
               authChange.insert.asTry
             } else {
-              DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+              logger.debug("SADIYAH -- OH NO!")
+              DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId))).asTry
             }
           case Failure(t) => DBIO.failed(t).asTry
         })).map({
@@ -422,7 +423,7 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
                 val authChange = AuthenticationChangeRow(0, orgid, compositeId, "user", AuthenticationChangeConfig.CREATE_UPDATE, write(changes)(DefaultFormats), ApiTime.nowUTC)
                 authChange.insert.asTry
               } else {
-                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId)))
+                DBIO.failed(new DBProcessingError(HttpCode.NOT_FOUND, ApiRespType.NOT_FOUND, ExchMsg.translate("user.not.found", compositeId))).asTry
               }
             case Failure(t) => DBIO.failed(t).asTry
           })).map({ xs =>

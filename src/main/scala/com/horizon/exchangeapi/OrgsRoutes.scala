@@ -121,6 +121,11 @@ final case class ResourceChangesRequest(changeId: Int, lastUpdated: Option[Strin
   def getAnyProblem: Option[String] = None // None means no problems with input
 }
 
+/** Case class for request body for AuthenticationChanges route */
+final case class AuthChangesRequest(changeId: Int, lastUpdated: Option[String], maxRecords: Int) {
+  def getAnyProblem: Option[String] = None // None means no problems with input
+}
+
 /** The following classes are to build the response object for the ResourceChanges route */
 final case class ResourceChangesInnerObject(changeId: Int, lastUpdated: String)
 final case class ChangeEntry(orgId: String, var resource: String, id: String, var operation: String, resourceChanges: ListBuffer[ResourceChangesInnerObject]){
@@ -129,6 +134,11 @@ final case class ChangeEntry(orgId: String, var resource: String, id: String, va
   def setResource(newResource: String) {this.resource = newResource}
 }
 final case class ResourceChangesRespObject(changes: List[ChangeEntry], mostRecentChangeId: Int, maxChangeIdOfQuery: Int, exchangeVersion: String)
+
+/** The following classes are to build the response object for the AuthChanges route */
+final case class AuthChangesRespObject(changes: List[AuthChange], maxChangeId: Int)
+final case class AuthChange(changeId: Int, orgId: String, id: String, resource: String, operation: String, changes: String, lastUpdated: String)
+
 
 /** Routes for /orgs */
 @Path("/v1/orgs")
@@ -624,14 +634,12 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
 
           db.run(qOrg.result.asTry.flatMap({
             case Success(qOrgResult) =>
-              //logger.debug("POST /orgs/" + orgId + "/changes changes in caller org: " + qOrgResult.toString())
               logger.debug("POST /orgs/" + orgId + "/changes changes in caller org: " + qOrgResult.size)
               qOrgResp = qOrgResult
               qPublic.result.asTry
             case Failure(t) => DBIO.failed(t).asTry
           }).flatMap({
             case Success(qIBMResult) => qPublicResp = qIBMResult
-              //logger.debug("POST /orgs/" + orgId + "/changes public changes in IBM org: " + qIBMResult.toString())
               logger.debug("POST /orgs/" + orgId + "/changes public changes in IBM org: " + qIBMResult.size)
               val id = orgId + "/" + ident.getIdentity
               ident match {
@@ -652,6 +660,73 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
               else (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("node.or.agbot.not.found", ident.getIdentity)))
             case Failure(t) =>
               (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("invalid.input.message", t.getMessage)))
+          })
+        }) // end of complete
+      } // end of validateWithMsg
+    } // end of exchAuth
+  }
+
+  def buildAuthChangesResponse(orgList: scala.Seq[(Int, String, String, String, String, String, String)], maxResp : Int): AuthChangesRespObject ={
+    val changesList = ListBuffer[AuthChange]()
+    for( entry <- orgList) {
+      /*
+          Example of what entry might look like
+            {
+              "_1":167,   --> changeId
+              "_2":"org2",    --> orgID
+              "_3":"resourcetest",    --> id
+              "_4":"node",    --> resource
+              "_5":"delete",   --> operation
+              "_6":"",    --> changes
+              "_7":"2019-12-12T19:28:05.309Z[UTC]",   --> lastUpdated
+            }
+           */
+      changesList += AuthChange(entry._1, entry._2, entry._3, entry._4, entry._5, entry._6, entry._7)
+    }
+    val respList = changesList.toList.take(maxResp)
+    val maxChangeId = respList.last.changeId
+    AuthChangesRespObject(respList, maxChangeId)
+  }
+
+    /* ====== POST /orgs/{orgid}/authchanges ================================ */
+  @POST
+  @Path("{orgid}/authchanges")
+  @Operation(summary = "Returns recent authentication changes in this org", description = "Returns all the recent authentication changes within an org that the caller has permissions to view.",
+    parameters = Array(
+      new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id.")),
+    requestBody = new RequestBody(description = """
+```
+{
+  "changeId": <number-here>,
+  "lastUpdated": "<time-here>", --> optional field, only use if the caller doesn't know what changeId to use
+  "maxRecords": <number-here>, --> the maximum number of records the caller wants returned to them, NOT optional
+}
+```""", required = true, content = Array(new Content(schema = new Schema(implementation = classOf[ResourceChangesRequest])))),
+    responses = Array(
+      new responses.ApiResponse(responseCode = "201", description = "changes returned - response body:",
+        content = Array(new Content(schema = new Schema(implementation = classOf[ResourceChangesRespObject])))),
+      new responses.ApiResponse(responseCode = "400", description = "bad input"),
+      new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
+      new responses.ApiResponse(responseCode = "403", description = "access denied"),
+      new responses.ApiResponse(responseCode = "404", description = "not found")))
+  def orgAuthChangesRoute: Route = (post & path("orgs" / Segment / "authchanges") & entity(as[AuthChangesRequest])) { (orgId, reqBody) =>
+    logger.debug(s"Doing POST /orgs/$orgId/authchanges")
+    exchAuth(TOrg(orgId), Access.ALL_IN_ORG) { ident => // this should at the very least only be called by admin
+      validateWithMsg(reqBody.getAnyProblem) {
+        complete({
+          // Variables to help with building the query
+          val lastTime = reqBody.lastUpdated.getOrElse(ApiTime.beginningUTC)
+
+          //Should this query even filter on org? Since this is only internal and will be used to just keep up the cache
+
+          val q = for {
+            r <- AuthenticationChangesTQ.rows.filter(_.orgId === orgId).filter(_.lastUpdated >= lastTime).filter(_.changeId >= reqBody.changeId)
+          } yield (r.changeId, r.orgId, r.id, r.resource, r.operation, r.changes, r.lastUpdated)
+
+          db.run(q.result).map({ list =>
+            logger.debug("POST /orgs/"+orgId+"/authchanges result size: "+list.size)
+            if (list.nonEmpty){(HttpCode.POST_OK, buildAuthChangesResponse(list, reqBody.maxRecords))}
+            else (HttpCode.NOT_FOUND, ExchMsg.translate("not.found"))
           })
         }) // end of complete
       } // end of validateWithMsg

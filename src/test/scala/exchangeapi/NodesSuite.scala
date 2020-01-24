@@ -107,6 +107,13 @@ class NodesSuite extends FunSuite {
   val ibmService = "TestIBMService"
   val maxRecords = 10000
   val secondsAgo = 120
+  val svcBase = "svc9920"
+  val svcDoc = "http://" + svcBase
+  val svcUrl = "" + svcBase
+  val svcVersion = "1.0.0"
+  val svcArch = "arm"
+  val service = svcBase + "_" + svcVersion + "_" + svcArch
+  val orgservice = authpref+service
 
   implicit val formats = DefaultFormats // Brings in default date formats etc.
 
@@ -1719,6 +1726,59 @@ class NodesSuite extends FunSuite {
     assert(!response.body.isEmpty)
     val parsedBody = parse(response.body).extract[ResourceChangesRespObject]
     assert(parsedBody.changes.exists(y => {(y.id == nodeId3) && (y.operation == ResourceChangeConfig.DELETED) && (y.resource == "node")}))
+  }
+
+  test("POST /orgs/"+orgid+"/services - add "+service+" as user so we can grab it from /changes route") {
+    val input = PostPutServiceRequest(svcBase+" arm", None, public = false, Some(svcDoc), svcUrl, svcVersion, svcArch, "multiple", None, None, Some(List(Map("name" -> "foo"))), "{\"services\":{}}","a",None)
+    val response = Http(URL+"/services").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
+    info("code: "+response.code+", response.body: "+response.body)
+    assert(response.code === HttpCode.POST_OK.intValue)
+    val respObj = parse(response.body).extract[ApiResponse]
+    assert(respObj.msg.contains("service '"+orgservice+"' created"))
+  }
+
+  val org2service = authpref2+service
+
+  test("POST /orgs/"+orgid2+"/services - add public "+service+" as root in second org to check that its in response") {
+    val input = PostPutServiceRequest(svcBase+" arm", None, public = true, Some(svcDoc), svcUrl, svcVersion, svcArch, "multiple", None, None, Some(List(Map("name" -> "foo"))), "{\"services\":{}}","a",None)
+    val response = Http(URL2+"/services").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+    info("code: "+response.code+", response.body: "+response.body)
+    assert(response.code === HttpCode.POST_OK.intValue)
+    val respObj = parse(response.body).extract[ApiResponse]
+    assert(respObj.msg.contains("service '"+org2service+"' created"))
+  }
+
+  test("PUT /orgs/"+orgid2+"/nodes/"+nodeId+" - add normal node as user, but with no pattern yet") {
+    val input = PutNodesRequest(nodeToken, "rpi"+nodeId+"-new", "", None, None, None, Some(Map("horizon"->"3.2.3")), nodePubKey, None, Some(NodeHeartbeatIntervals(5,15,2)))
+    val response = Http(URL2+"/nodes/"+nodeId).postData(write(input)).method("put").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+    info("code: "+response.code)
+    assert(response.code === HttpCode.PUT_OK.intValue)
+  }
+
+  test("POST /orgs/"+orgid+"/changes - verify " + nodeId + " doesn't see changes from other nodes but still sees normal changes") {
+    val time = ApiTime.pastUTC(secondsAgo)
+    val input = ResourceChangesRequest(0, Some(time), maxRecords, None)
+    val response = Http(URL+"/changes").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(NODEAUTH).asString
+    info("code: "+response.code)
+    assert(response.code === HttpCode.POST_OK.intValue)
+    assert(!response.body.isEmpty)
+    val parsedBody = parse(response.body).extract[ResourceChangesRespObject]
+    assert(!parsedBody.changes.exists(y => {(y.orgId == orgid) && (y.id == nodeId3)}))
+    assert(!parsedBody.changes.exists(y => {(y.orgId == orgid2) && (y.id == nodeId)}))
+    assert(parsedBody.changes.exists(y => {(y.orgId == orgid) && (y.id == service) && (y.operation == ResourceChangeConfig.CREATED) && (y.resource == "service")}))
+    assert(parsedBody.changes.exists(y => {(y.orgId == orgid2) && (y.id == service) && (y.operation == ResourceChangeConfig.CREATED) && (y.resource == "service")}))
+  }
+
+  test("POST /orgs/"+orgid+"/changes - verify maxRecords works") {
+    val time = ApiTime.pastUTC(secondsAgo)
+    val testMaxRecords = 3
+    val input = ResourceChangesRequest(0, Some(time), testMaxRecords, None)
+    val response = Http(URL+"/changes").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
+    info("code: "+response.code)
+    assert(response.code === HttpCode.POST_OK.intValue)
+    assert(!response.body.isEmpty)
+    val parsedBody = parse(response.body).extract[ResourceChangesRespObject]
+    assert(parsedBody.changes.size <= testMaxRecords)
   }
 
   test("PUT /orgs/"+orgid+"/nodes/"+nodeId+"/agreements/9952 - Try to add a 3rd agreement with low maxAgreements") {

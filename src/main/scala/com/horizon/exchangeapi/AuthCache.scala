@@ -4,7 +4,6 @@ import java.util.concurrent.TimeUnit
 
 import scala.concurrent.ExecutionContext
 
-//import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.CacheIdType.CacheIdType
 import com.horizon.exchangeapi.tables._
 import slick.jdbc.PostgresProfile.api._
@@ -30,15 +29,13 @@ object CacheIdType extends Enumeration {
 
 /** In-memory cache of the user/pw, node id/token, and agbot id/token, where the pw and tokens are not hashed to speed up validation */
 object AuthCache /* extends Control with ServletApiImplicits */ {
-  //val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
-  //def logger: LoggingAdapter = ExchangeApiApp.logger  // <- can't do this because of DelayedInit
-  def logger = ExchConfig.logger
+  def logger = ExchangeApi.defaultLogger
   implicit def executionContext: ExecutionContext = ExchangeApi.defaultExecutionContext
 
   var cacheType = "" // set from the config file by ExchConfig.load(). Note: currently there is no other value besides guava
 
   // The unhashed and hashed values of the token are not always both set, but if they are they are in sync.
-  case class Tokens(unhashed: String, hashed: String)
+  final case class Tokens(unhashed: String, hashed: String)
 
   /** Holds recently authenticated users, node ids, agbot ids */
   class CacheId() {

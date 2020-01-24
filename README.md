@@ -224,9 +224,36 @@ Now you can disable root by setting `api.root.enabled` to `false` in `/etc/horiz
     - detect if a pattern is updated with service that has userInput w/o default values, and give warning
     - Consider changing all creates to POST, and update (via put/patch) return codes to 200
 
-## Changes in 2.6.0
+## Changes in 2.9.0
 
 - Issue 232: Notification Framework Authentication Changes Table
+
+## Changes in 2.8.0
+
+- Issue 278: Notification Framework V1.3 (bug fix of missing changes and increased efficiency)
+- Issue 229: Pattern Search "service not in pattern" response fixed
+
+## Changes in 2.7.2
+
+- Changed the order of the akka route directives to match the path before the http method
+
+## Changes in 2.7.1
+
+- Fixed the logging of rejections
+- Fixed listing all of a resource type from another org
+- Added separate way to query icp/ocp exchange org
+
+## Changes in 2.7.0
+
+- Issue 277: Notification Framework Updates
+
+## Changes in 2.6.0
+
+- Fixed issue 262 - get icp cluster name once at the beginning
+- Fixed issue 256 - trying to access a non-existent resource in another org incorrectly returned 403 instead of 404
+- Fixed issue 264 - for auth exceptions, prefer returning retryable http codes
+- Verified authentication using OCP
+- Modified use of `ICP_EXTERNAL_MGMT_INGRESS` env var so it can optionally have `https://` prepended
 
 ## Changes in 2.5.0
 

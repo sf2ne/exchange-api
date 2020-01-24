@@ -4,7 +4,6 @@ package com.horizon.exchangeapi
 import javax.ws.rs._
 import akka.actor.ActorSystem
 import akka.event.LoggingAdapter
-//import akka.event.{ Logging, LoggingAdapter }
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -17,27 +16,20 @@ import scala.concurrent.ExecutionContext
 
 import de.heikoseeberger.akkahttpjackson._
 import org.json4s._
-//import org.json4s.jackson.JsonMethods._
 import org.json4s.jackson.Serialization.write
 
 import io.swagger.v3.oas.annotations.parameters.RequestBody
 import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.{ Content, Schema }
-//import io.swagger.v3.oas.annotations.responses.ApiResponse
-//import io.swagger.v3.oas.annotations.{ Operation, Parameter }
 import io.swagger.v3.oas.annotations._
-//import io.swagger.v3.jaxrs2   // this also does not have the PATCH method
 
 import com.horizon.exchangeapi.tables._
 import com.horizon.exchangeapi.tables.ExchangePostgresProfile.api._
-//import com.horizon.exchangeapi.auth.DBProcessingError
 
 import scala.collection.immutable._
 import scala.collection.mutable.ListBuffer
 import scala.util._
 import scala.util.control.Breaks._
-//import scala.concurrent.Future
-//import scala.concurrent.ExecutionContext.Implicits.global
 
 /*someday: when we start using actors:
 import akka.actor.{ ActorRef, ActorSystem }
@@ -57,14 +49,8 @@ final case class GetOrgAttributeResponse(attribute: String, value: String)
 /** Input format for PUT /orgs/<org-id> */
 final case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]], heartbeatIntervals: Option[NodeHeartbeatIntervals]) {
   require(label!=null && description!=null)
-  //require(label!=null, "label must be specified")
-  //require(description!=null, "description must be specified")
   protected implicit val jsonFormats: Formats = DefaultFormats
   def getAnyProblem: Option[String] = None
-  /* def getAnyProblem: Option[String] = {
-    if (label==null || description==null) Some("A required field is missing")
-    else None
-  } */
 
   def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiUtils.asJValue(ts)), write(heartbeatIntervals))
 }
@@ -73,13 +59,11 @@ final case class PatchOrgRequest(orgType: Option[String], label: Option[String],
   protected implicit val jsonFormats: Formats = DefaultFormats
 
   def getAnyProblem: Option[String] = {
-    //println(s"raw request body: $requestBody")
     None
   }
   /** Returns a tuple of the db action to update parts of the org, and the attribute name being updated. */
   def getDbUpdate(orgId: String)(implicit executionContext: ExecutionContext): (DBIO[_], String) = {
     import com.horizon.exchangeapi.tables.ExchangePostgresProfile.plainAPI._
-    //import scala.concurrent.ExecutionContext.Implicits.global
     val lastUpdated = ApiTime.nowUTC
     // find the 1st attribute that was specified in the body and create a db action to update it for this org
     orgType match { case Some(ot) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.orgType, d.lastUpdated)).update((orgId, ot, lastUpdated)), "orgType"); case _ => ; }
@@ -143,8 +127,7 @@ final case class AuthChange(changeId: Int, orgId: String, id: String, resource: 
 /** Routes for /orgs */
 @Path("/v1/orgs")
 trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
-  // Tell spray how to marshal our types (models) to/from the rest client
-  // old way: protected implicit def jsonFormats: Formats
+  // Not using Spray, but left here for reference, in case we want to switch to it - Tell spray how to marshal our types (models) to/from the rest client
   //import DefaultJsonProtocol._
   // Note: it is important to use the immutable version of collections like Map
   // Note: if you accidentally omit a class here, you may get a msg like: [error] /Users/bp/src/github.com/open-horizon/exchange-api/src/main/scala/com/horizon/exchangeapi/OrgsRoutes.scala:49:44: could not find implicit value for evidence parameter of type spray.json.DefaultJsonProtocol.JF[scala.collection.immutable.Seq[com.horizon.exchangeapi.TmpOrg]]
@@ -154,9 +137,6 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
   implicit val getOrgAttributeResponseJsonFormat = jsonFormat2(GetOrgAttributeResponse)
   implicit val postPutOrgRequestJsonFormat = jsonFormat4(PostPutOrgRequest) */
   //implicit val actionPerformedJsonFormat = jsonFormat1(ActionPerformed)
-
-  //def db: Database = ExchangeApiApp.getDb
-  //lazy implicit val logger: LoggingAdapter = Logging(system, classOf[OrgsRoutes])
 
   // Will pick up these values when it is mixed in with ExchangeApiApp
   def db: Database
@@ -203,14 +183,11 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgsGetRoute: Route = (get & path("orgs") & parameter(('orgtype.?, 'label.?))) { (orgType, label) =>
+  def orgsGetRoute: Route = (path("orgs") & get & parameter(('orgtype.?, 'label.?))) { (orgType, label) =>
     logger.debug(s"Doing GET /orgs with orgType:$orgType, label:$label")
     // If filter is orgType=IBM then it is a different access required than reading all orgs
     val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ_OTHER_ORGS
     exchAuth(TOrg("*"), access) { ident =>
-    /* auth(creds, TOrg("*"), access) match {
-      case Failure(t) => reject(AuthRejection(t))
-      case Success(ident) => */
       validate(orgType.isEmpty || orgType.get == "IBM", ExchMsg.translate("org.get.orgtype")) {
         complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
           logger.debug("GET /orgs identity: " + ident)
@@ -249,7 +226,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgGetRoute: Route = (get & path("orgs" / Segment) & parameter('attribute.?)) { (orgId, attribute) =>
+  def orgGetRoute: Route = (path("orgs" / Segment) & get & parameter('attribute.?)) { (orgId, attribute) =>
     exchAuth(TOrg(orgId), Access.READ) { ident =>
       logger.debug(s"GET /orgs/$orgId ident: ${ident.getIdentity}")
       complete({
@@ -304,7 +281,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPostRoute: Route = (post & path("orgs" / Segment) & entity(as[PostPutOrgRequest])) { (orgId, reqBody) =>
+  def orgPostRoute: Route = (path("orgs" / Segment) & post & entity(as[PostPutOrgRequest])) { (orgId, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgId")
     exchAuth(TOrg(""), Access.CREATE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -337,7 +314,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPutRoute: Route = (put & path("orgs" / Segment) & entity(as[PostPutOrgRequest])) { (orgId, reqBody) =>
+  def orgPutRoute: Route = (path("orgs" / Segment) & put & entity(as[PostPutOrgRequest])) { (orgId, reqBody) =>
     logger.debug(s"Doing PUT /orgs/$orgId with orgId:$orgId")
     val access = if (reqBody.orgType.getOrElse("") == "IBM") Access.SET_IBM_ORG_TYPE else Access.WRITE
     exchAuth(TOrg(orgId), access) { _ =>
@@ -370,7 +347,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPatchRoute: Route = (patch & path("orgs" / Segment) & entity(as[PatchOrgRequest])) { (orgId, reqBody) =>
+  def orgPatchRoute: Route = (path("orgs" / Segment) & patch & entity(as[PatchOrgRequest])) { (orgId, reqBody) =>
     logger.debug(s"Doing PATCH /orgs/$orgId with orgId:$orgId")
     val access = if (reqBody.orgType.getOrElse("") == "IBM") Access.SET_IBM_ORG_TYPE else Access.WRITE
     exchAuth(TOrg(orgId), access) { _ =>
@@ -402,7 +379,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgDeleteRoute: Route = (delete & path("orgs" / Segment)) { (orgId) =>
+  def orgDeleteRoute: Route = (path("orgs" / Segment) & delete) { (orgId) =>
     logger.debug(s"Doing DELETE /orgs/$orgId")
     exchAuth(TOrg(orgId), Access.WRITE) { _ =>
       complete({
@@ -432,7 +409,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPostNodesErrorRoute: Route = (post & path("orgs" / Segment / "search" / "nodes" / "error")) { (orgid) =>
+  def orgPostNodesErrorRoute: Route = (path("orgs" / Segment / "search" / "nodes" / "error") & post) { (orgid) =>
     logger.debug(s"Doing POST /orgs/$orgid/search/nodes/error")
     exchAuth(TNode(OrgAndId(orgid,"*").toString),Access.READ) { _ =>
       complete({
@@ -471,7 +448,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPostNodesServiceRoute: Route = (post & path("orgs" / Segment / "search" / "nodes" / "service") & entity(as[PostServiceSearchRequest])) { (orgid, reqBody) =>
+  def orgPostNodesServiceRoute: Route = (path("orgs" / Segment / "search" / "nodes" / "service") & post & entity(as[PostServiceSearchRequest])) { (orgid, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgid/search/nodes/service")
     exchAuth(TNode(OrgAndId(orgid,"*").toString),Access.READ) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -512,7 +489,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPostNodesHealthRoute: Route = (post & path("orgs" / Segment / "search" / "nodehealth") & entity(as[PostNodeHealthRequest])) { (orgid, reqBody) =>
+  def orgPostNodesHealthRoute: Route = (path("orgs" / Segment / "search" / "nodehealth") & post & entity(as[PostNodeHealthRequest])) { (orgid, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgid/search/nodes/service")
     exchAuth(TNode(OrgAndId(orgid,"*").toString),Access.READ) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -538,58 +515,35 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
     } // end of exchAuth
   }
 
-  def buildResourceChangesResponse(orgList: scala.Seq[(Int, String, String, String, String, String, String, String)], ibmList: scala.Seq[(Int, String, String, String, String, String, String, String)], maxResp : Int): ResourceChangesRespObject ={
+  def buildResourceChangesResponse(inputList: scala.Seq[ResourceChangeRow], maxRecords : Int): ResourceChangesRespObject ={
+    // fill in some values we can before processing
     val exchangeVersion = ExchangeApi.adminVersion()
-    val inputList = List(orgList, ibmList)
-    val changesList = ListBuffer[ChangeEntry]()
-    var mostRecentChangeId = 0
+    val maxChangeIdOfQuery = inputList.last.changeId // this is the maximum changeId of the entire query from the db
+    // set up needed variables
     var entryCounter = 0
-    var maxChangeIdOfQuery = 0
+    var mostRecentChangeId = 0
+    val changesMap = scala.collection.mutable.Map[String, ChangeEntry]() //using a Map allows us to avoid having a loop in a loop when searching the map for the resource id
+    // fill in changesMap
     breakable {
-      for(input <- inputList) { //this for loop should only ever be of size 2
-        val changesMap = scala.collection.mutable.Map[String, ChangeEntry]() //using a Map allows us to avoid having a loop in a loop when searching the map for the resource id
-        for( entry <- input) {
-          /*
-          Example of what entry might look like
-            {
-              "_1":167,   --> changeId
-              "_2":"org2",    --> orgID
-              "_3":"resourcetest",    --> id
-              "_4":"node",    --> category
-              "_5":"false",   --> public
-              "_6":"node",    --> resource
-              "_7":"created/modified",  --> operation
-              "_8":"2019-12-12T19:28:05.309Z[UTC]",   --> lastUpdated
-            }
-           */
-          val resChange = ResourceChangesInnerObject(entry._1, entry._8)
-          if(changesMap.isDefinedAt(entry._3+"_"+entry._6)){  // using the map allows for better searching and entry
-            if(changesMap(entry._3+"_"+entry._6).resourceChanges.last.changeId < entry._1){
-              // the entry we are looking at actually happened later than the last entry in resourceChanges
-              // doing this check by changeId on the off chance two changes happen at the exact same time changeId tells which one is most updated
-              changesMap(entry._3+"_"+entry._6).addToResourceChanges(resChange) // add the changeId and lastUpdated to the list of recent changes
-              changesMap(entry._3+"_"+entry._6).setOperation(entry._7) // update the most recent operation performed
-            }
-          } else{
+      for (entry <- inputList) { // looping through every single ResourceChangeRow in inputList
+        val resChange = ResourceChangesInnerObject(entry.changeId, entry.lastUpdated)
+        changesMap.get(entry.orgId+"_"+entry.id+"_"+entry.resource) match { // using the map allows for better searching and entry
+          case Some(change) =>
+            // inputList is already sorted by changeId from the query so we know this change happened later
+            change.addToResourceChanges(resChange) // add the changeId and lastUpdated to the list of recent changes
+            change.setOperation(entry.operation) // update the most recent operation performed
+          case None => // add the change to the changesMap
             val resChangeListBuffer = ListBuffer[ResourceChangesInnerObject](resChange)
-            changesMap(entry._3+"_"+entry._6) = ChangeEntry(entry._2, entry._6, entry._3, entry._7, resChangeListBuffer)
-          }
-          //check maxChangeIdOfQuery
-          if (entry._1 > maxChangeIdOfQuery) {maxChangeIdOfQuery = entry._1}
-        }
-        // convert changesMap to ListBuffer[ChangeEntry]
-        breakable {
-          for (entry <- changesMap) {
-            if (entryCounter > maxResp) break // if we are over the count of allowed entries just stop and go to outer loop
-            changesList += entry._2 // if we are not just continue adding to the changesList
-            if (mostRecentChangeId < entry._2.resourceChanges.last.changeId) { mostRecentChangeId = entry._2.resourceChanges.last.changeId } //set the mostRecentChangeId value
-            entryCounter += 1 // increment our count of how many entries there are in changesList
-          }
-        }
-        if (entryCounter > maxResp) break // if we are over the count of allowed entries just stop and return the list as is
-      }
+            changesMap.put(entry.orgId+"_"+entry.id+"_"+entry.resource, ChangeEntry(entry.orgId, entry.resource, entry.id, entry.operation, resChangeListBuffer))
+        } // end of match
+        if (entry.changeId > mostRecentChangeId) {mostRecentChangeId = entry.changeId} // set the maximum changeId that will be in the response
+        entryCounter += 1 // increment our count of how many changeId's we've gone through
+        if (entryCounter >= maxRecords) break // if we have now met or are over the count of allowed entries just stop and make the map into a list
+      } // end of for loop
     }
-    ResourceChangesRespObject(changesList.toList, mostRecentChangeId, maxChangeIdOfQuery, exchangeVersion)
+    // now we have changesMap which is Map[String, ChangeEntry] we need to convert that to a List[ChangeEntry]
+    val changesList = changesMap.values.toList
+    ResourceChangesRespObject(changesList, mostRecentChangeId, maxChangeIdOfQuery, exchangeVersion)
   }
 
   /* ====== POST /orgs/{orgid}/changes ================================ */
@@ -613,34 +567,28 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgChangesRoute: Route = (post & path("orgs" / Segment / "changes") & entity(as[ResourceChangesRequest])) { (orgId, reqBody) =>
+  def orgChangesRoute: Route = (path("orgs" / Segment / "changes") & post & entity(as[ResourceChangesRequest])) { (orgId, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgId/changes")
     exchAuth(TOrg(orgId), Access.READ) { ident =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
           // Variables to help with building the query
           val lastTime = reqBody.lastUpdated.getOrElse(ApiTime.beginningUTC)
-          //perf: reduce these 2 db queries to 1 db query
-          val qOrg = for {
-            r <- ResourceChangesTQ.rows.filter(_.orgId === orgId).filter(_.lastUpdated >= lastTime).filter(_.changeId >= reqBody.changeId)
-          } yield (r.changeId, r.orgId, r.id, r.category, r.public, r.resource, r.operation, r.lastUpdated)
-
-          val qPublic = for {
-            r <- ResourceChangesTQ.rows.filter(_.orgId =!= orgId).filter(_.public === "true").filter(_.lastUpdated >= lastTime).filter(_.changeId >= reqBody.changeId)
-          } yield (r.changeId, r.orgId, r.id, r.category, r.public, r.resource, r.operation, r.lastUpdated)
-
-          var qOrgResp : scala.Seq[(Int, String, String, String, String, String, String, String)] = null
-          var qPublicResp : scala.Seq[(Int, String, String, String, String, String, String, String)] = null
-
-          db.run(qOrg.result.asTry.flatMap({
-            case Success(qOrgResult) =>
-              logger.debug("POST /orgs/" + orgId + "/changes changes in caller org: " + qOrgResult.size)
-              qOrgResp = qOrgResult
-              qPublic.result.asTry
-            case Failure(t) => DBIO.failed(t).asTry
-          }).flatMap({
-            case Success(qIBMResult) => qPublicResp = qIBMResult
-              logger.debug("POST /orgs/" + orgId + "/changes public changes in IBM org: " + qIBMResult.size)
+          // filter by lastUpdated and changeId then filter by either it's in the org OR it's not in the same org but is public
+          var qFilter = ResourceChangesTQ.rows.filter(_.lastUpdated >= lastTime).filter(_.changeId >= reqBody.changeId).filter(u => (u.orgId === orgId) || (u.orgId =!= orgId && u.public === "true"))
+          ident match {
+            case _: INode =>
+              // if its a node calling then it doesn't want information about any other nodes
+              qFilter = qFilter.filter(u => (u.category === "node" && u.id === ident.getIdentity) || u.category =!= "node")
+            case _ => ;
+          }
+          val q = for { r <- qFilter.sortBy(_.changeId) } yield r //sort the response by changeId
+          var qResp : scala.Seq[ResourceChangeRow] = null
+          db.run(q.result.asTry.flatMap({
+            case Success(qResult) =>
+              //logger.debug("POST /orgs/" + orgId + "/changes changes : " + qOrgResult.toString())
+              logger.debug("POST /orgs/" + orgId + "/changes changes : " + qResult.size)
+              qResp = qResult
               val id = orgId + "/" + ident.getIdentity
               ident match {
                 case _: INode =>
@@ -652,12 +600,12 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
                   // v in the next step must be > 0 so any n > 0 works
                   DBIO.successful(1).asTry
               }
-            case Failure(t) => DBIO.failed(new Throwable(t.getMessage)).asTry
+            case Failure(t) => DBIO.failed(t).asTry
           })).map({
             case Success(n) =>
-              logger.debug(s"POST /orgs/$orgId result: $n")
-              if (n > 0) (HttpCode.POST_OK, buildResourceChangesResponse(qOrgResp, qPublicResp, reqBody.maxRecords))
-              else (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("node.or.agbot.not.found", ident.getIdentity)))
+              logger.debug(s"POST /orgs/$orgId/changes node/agbot heartbeat result: $n")
+              if (n > 0) (HttpCode.POST_OK, buildResourceChangesResponse(qResp, reqBody.maxRecords))
+            else (HttpCode.NOT_FOUND, ApiResponse(ApiRespType.NOT_FOUND, ExchMsg.translate("node.or.agbot.not.found", ident.getIdentity)))
             case Failure(t) =>
               (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("invalid.input.message", t.getMessage)))
           })

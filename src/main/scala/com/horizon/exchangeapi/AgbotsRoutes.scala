@@ -17,16 +17,11 @@ import org.json4s.jackson.Serialization.write
 
 import scala.concurrent.ExecutionContext
 
-//import scala.concurrent.ExecutionContext.Implicits.global
-
 import com.horizon.exchangeapi.tables._
 import org.json4s._
-//import org.json4s.jackson.JsonMethods._
-//import org.json4s.jackson.Serialization.write
 import slick.jdbc.PostgresProfile.api._
 
 import scala.collection.immutable._
-//import scala.collection.mutable.{ListBuffer, HashMap => MutableHashMap}
 import scala.util._
 
 //====== These are the input and output structures for /agbots routes. Swagger and/or json seem to require they be outside the trait.
@@ -163,7 +158,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotsGetRoute: Route = (get & path("orgs" / Segment / "agbots") & parameter(('idfilter.?, 'name.?, 'owner.?))) { (orgid, idfilter, name, owner) =>
+  def agbotsGetRoute: Route = (path("orgs" / Segment / "agbots") & get & parameter(('idfilter.?, 'name.?, 'owner.?))) { (orgid, idfilter, name, owner) =>
     logger.debug(s"Doing GET /orgs/$orgid/agbots")
     exchAuth(TAgbot(OrgAndId(orgid,"*").toString), Access.READ) { ident =>
       complete({
@@ -197,7 +192,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment) & parameter(('attribute.?))) { (orgid, id, attribute) =>
+  def agbotGetRoute: Route = (path("orgs" / Segment / "agbots" / Segment) & get & parameter(('attribute.?))) { (orgid, id, attribute) =>
     logger.debug(s"Doing GET /orgs/$orgid/agbots/$id")
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.READ) { ident =>
@@ -248,7 +243,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPutRoute: Route = (put & path("orgs" / Segment / "agbots" / Segment) & entity(as[PutAgbotsRequest])) { (orgid, id, reqBody) =>
+  def agbotPutRoute: Route = (path("orgs" / Segment / "agbots" / Segment) & put & entity(as[PutAgbotsRequest])) { (orgid, id, reqBody) =>
     logger.debug(s"Doing PUT /orgs/$orgid/agbots/$id")
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { ident =>
@@ -310,7 +305,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPatchRoute: Route = (patch & path("orgs" / Segment / "agbots" / Segment) & entity(as[PatchAgbotsRequest])) { (orgid, id, reqBody) =>
+  def agbotPatchRoute: Route = (path("orgs" / Segment / "agbots" / Segment) & patch & entity(as[PatchAgbotsRequest])) { (orgid, id, reqBody) =>
     logger.debug(s"Doing PATCH /orgs/$orgid/agbots/$id")
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
@@ -367,7 +362,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment)) { (orgid, id) =>
+  def agbotDeleteRoute: Route = (path("orgs" / Segment / "agbots" / Segment) & delete) { (orgid, id) =>
     logger.debug(s"Doing DELETE /orgs/$orgid/agbots/$id")
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
@@ -417,7 +412,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotHeartbeatRoute: Route = (post & path("orgs" / Segment / "agbots" / Segment / "heartbeat")) { (orgid, id) =>
+  def agbotHeartbeatRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "heartbeat") & post) { (orgid, id) =>
     logger.debug(s"Doing POST /orgs/$orgid/users/$id/heartbeat")
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId),Access.WRITE) { _ =>
@@ -452,7 +447,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetPatternsRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "patterns")) { (orgid, id) =>
+  def agbotGetPatternsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "patterns") & get) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -481,7 +476,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetPatternRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "patterns" / Segment)) { (orgid, id, patId) =>
+  def agbotGetPatternRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "patterns" / Segment) & get) { (orgid, id, patId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -516,7 +511,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPostPatRoute: Route = (post & path("orgs" / Segment / "agbots" / Segment / "patterns") & entity(as[PostAgbotPatternRequest])) { (orgid, id, reqBody) =>
+  def agbotPostPatRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "patterns") & post & entity(as[PostAgbotPatternRequest])) { (orgid, id, reqBody) =>
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId),Access.WRITE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -561,7 +556,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeletePatsRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "patterns")) { (orgid, id) =>
+  def agbotDeletePatsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "patterns") & delete) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -603,7 +598,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeletePatRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "patterns" / Segment)) { (orgid, id, patId) =>
+  def agbotDeletePatRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "patterns" / Segment) & delete) { (orgid, id, patId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -647,7 +642,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetBusPolsRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "businesspols")) { (orgid, id) =>
+  def agbotGetBusPolsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "businesspols") & get) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -676,7 +671,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetBusPolRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "businesspols" / Segment)) { (orgid, id, busPolId) =>
+  def agbotGetBusPolRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "businesspols" / Segment) & get) { (orgid, id, busPolId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -711,7 +706,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPostBusPolRoute: Route = (post & path("orgs" / Segment / "agbots" / Segment / "businesspols") & entity(as[PostAgbotBusinessPolRequest])) { (orgid, id, reqBody) =>
+  def agbotPostBusPolRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "businesspols") & post & entity(as[PostAgbotBusinessPolRequest])) { (orgid, id, reqBody) =>
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId),Access.WRITE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -756,7 +751,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteBusPolsRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "businesspols")) { (orgid, id) =>
+  def agbotDeleteBusPolsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "businesspols") & delete) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -798,7 +793,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteBusPolRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "businesspols" / Segment)) { (orgid, id, busPolId) =>
+  def agbotDeleteBusPolRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "businesspols" / Segment) & delete) { (orgid, id, busPolId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -842,7 +837,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetAgreementsRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "agreements")) { (orgid, id) =>
+  def agbotGetAgreementsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "agreements") & get) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -871,7 +866,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetAgreementRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment)) { (orgid, id, agrId) =>
+  def agbotGetAgreementRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment) & get) { (orgid, id, agrId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -910,7 +905,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPutAgreementRoute: Route = (put & path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment) & entity(as[PutAgbotAgreementRequest])) { (orgid, id, agrId, reqBody) =>
+  def agbotPutAgreementRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment) & put & entity(as[PutAgbotAgreementRequest])) { (orgid, id, agrId, reqBody) =>
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId),Access.WRITE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
@@ -956,7 +951,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteAgreementsRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "agreements")) { (orgid, id) =>
+  def agbotDeleteAgreementsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "agreements") & delete) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -998,7 +993,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteAgreementRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment)) { (orgid, id, agrId) =>
+  def agbotDeleteAgreementRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "agreements" / Segment) & delete) { (orgid, id, agrId) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({
@@ -1045,7 +1040,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotAgreementConfirmRoute: Route = (post & path("orgs" / Segment / "agreements" / "confirm") & entity(as[PostAgreementsConfirmRequest])) { (orgid, reqBody) =>
+  def agbotAgreementConfirmRoute: Route = (path("orgs" / Segment / "agreements" / "confirm") & post & entity(as[PostAgreementsConfirmRequest])) { (orgid, reqBody) =>
     exchAuth(TAgbot(OrgAndId(orgid,"#").toString), Access.READ) { ident =>
       complete({
         val creds = ident.creds
@@ -1111,7 +1106,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotPostMsgRoute: Route = (post & path("orgs" / Segment / "agbots" / Segment / "msgs") & entity(as[PostAgbotsMsgsRequest])) { (orgid, id, reqBody) =>
+  def agbotPostMsgRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "msgs") & post & entity(as[PostAgbotsMsgsRequest])) { (orgid, id, reqBody) =>
     val compositeId = OrgAndId(orgid, id).toString
     exchAuth(TAgbot(compositeId),Access.SEND_MSG_TO_AGBOT) { ident =>
       complete({
@@ -1171,7 +1166,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotGetMsgsRoute: Route = (get & path("orgs" / Segment / "agbots" / Segment / "msgs")) { (orgid, id) =>
+  def agbotGetMsgsRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "msgs") & get) { (orgid, id) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId),Access.READ) { _ =>
       complete({
@@ -1204,7 +1199,7 @@ trait AgbotsRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def agbotDeleteMsgRoute: Route = (delete & path("orgs" / Segment / "agbots" / Segment / "msgs" / Segment)) { (orgid, id, msgIdStr) =>
+  def agbotDeleteMsgRoute: Route = (path("orgs" / Segment / "agbots" / Segment / "msgs" / Segment) & delete) { (orgid, id, msgIdStr) =>
     val compositeId = OrgAndId(orgid,id).toString
     exchAuth(TAgbot(compositeId), Access.WRITE) { _ =>
       complete({

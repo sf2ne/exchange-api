@@ -5,7 +5,6 @@ import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.ExecutionContext
 
-//import scala.concurrent.ExecutionContext.Implicits.global
 import com.horizon.exchangeapi.tables._
 
 import scala.concurrent.Await
@@ -42,8 +41,6 @@ object ExchangeApiTables {
 
   /** Upgrades the db schema, or inits the db if necessary. Called every start up. */
   def upgradeDb(db: Database)(implicit logger: LoggingAdapter, executionContext: ExecutionContext): Unit = {
-    //val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
-
     // Run this and wait for it, because we don't want any other initialization occurring until the db is right
     val upgradeNotNeededMsg = "DB schema does not need upgrading, it is already at the latest schema version: "
 

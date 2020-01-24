@@ -2,15 +2,12 @@ package com.horizon.exchangeapi
 
 import akka.event.LoggingAdapter
 import akka.http.scaladsl.server.{Directive, Directive0, ValidationRejection}
-//import akka.http.scaladsl.model.headers.HttpCredentials
-//import akka.http.scaladsl.server.util.Tuple
 import akka.http.scaladsl.server.Directive1
 import com.horizon.exchangeapi.Access.Access
 import javax.security.auth.login.{AppConfigurationEntry, Configuration}
 
 import scala.util.matching.Regex
 import akka.http.scaladsl.server.Directives._
-//import akka.http.scaladsl.server.directives.RouteDirectives._
 import com.horizon.exchangeapi.auth._
 import javax.security.auth.login.LoginContext
 import org.mindrot.jbcrypt.BCrypt
@@ -36,7 +33,7 @@ The main authenticate/authorization flow is:
     - determines if the Identity has the specific access required
 */
 object AuthenticationSupport {
-  def logger = ExchConfig.logger
+  def logger = ExchangeApi.defaultLogger
   val decodedAuthRegex = new Regex("""^(.+):(.+)\s?$""")
 
   // Decodes the basic auth and parses it to return Some(Creds) or None if the creds aren't there or aren't parsable

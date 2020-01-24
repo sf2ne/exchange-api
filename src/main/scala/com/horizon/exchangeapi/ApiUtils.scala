@@ -62,12 +62,12 @@ object HttpCode {
   val NOT_FOUND = StatusCodes.NotFound // resource not found
   val INTERNAL_ERROR = StatusCodes.InternalServerError
   val NOT_IMPLEMENTED = StatusCodes.NotImplemented
-  val BAD_GW = StatusCodes.BadGateway // bad gateway, which for us means db connection error or jetty refused connection
+  val BAD_GW = StatusCodes.BadGateway // bad gateway, which for us means db connection error or IAM API problem
   val GW_TIMEOUT = StatusCodes.GatewayTimeout // gateway timeout, which for us means db timeout
 }
 
 /** These are used as the response structure for most PUTs, POSTs, and DELETEs. */
-case class ApiResponse(code: String, msg: String)
+final case class ApiResponse(code: String, msg: String)
 object ApiRespType {
   val BADCREDS = ExchMsg.translate("api.bad.creds")
   val ACCESS_DENIED = ExchMsg.translate("api.access.denied")
@@ -110,6 +110,7 @@ trait ExchangeRejection extends Rejection {
 
 // Converts an exception into an auth rejection
 final case class AuthRejection(t: Throwable) extends ExchangeRejection {
+  //todo: if a generic Throwable is passed in, maybe use something other than invalid creds
   def httpCode = t match {
     case e: AuthException => e.httpCode
     case _ => StatusCodes.Unauthorized // should never get here
@@ -386,7 +387,7 @@ object ApiTime {
 }
 
 /** Parse a version string like 1.2.3 into its parts and define >(), in(), etc. */
-case class Version(version: String) {
+final case class Version(version: String) {
   val R3 = """(\d+)\.(\d+)\.(\d+)""".r
   val R2 = """(\d+)\.(\d+)""".r
   val R1 = """(\d+)""".r
@@ -433,7 +434,7 @@ case class Version(version: String) {
 }
 
 /** Parse an osgi version range string and define includes() to test if a Version is in a VersionRange */
-case class VersionRange(range: String) {
+final case class VersionRange(range: String) {
   /* The typical format of a range is like [1.2.3,4.5.6), where
   The 1st version is the lower bound (floor), if not specified 0.0.0 is the default
   The 2nd version is the upper bound (ceiling), if not specified infinity is the default
@@ -487,7 +488,7 @@ case class VersionRange(range: String) {
 }
 
 /** Depending on the given int, returns 1st, 2nd, 3rd, 4th, ... */
-case class Nth(n: Int) {
+final case class Nth(n: Int) {
   override def toString: String = {
     n match {
       case 1 => return n + "st"

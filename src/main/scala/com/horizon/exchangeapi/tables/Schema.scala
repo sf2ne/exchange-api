@@ -143,12 +143,17 @@ object SchemaTQ {
         sqlu"create index cat_index on resourcechanges (category)",
         sqlu"create index pub_index on resourcechanges (public)"
       )
+//      case 32 => DBIO.seq(   // v2.12.0
+//        sqlu"create index lu_index on resourcechanges (lastupdated)"
+//      )
       // NODE: IF ADDING A TABLE, DO NOT FORGET TO ALSO ADD IT TO ExchangeApiTables.initDB and dropDB
       case other => logger.error("getUpgradeSchemaStep was given invalid step "+other); DBIO.seq()   // should never get here
     }
   }
   val latestSchemaVersion = 31    // NOTE: THIS MUST BE CHANGED WHEN YOU ADD TO getUpgradeSchemaStep() above
+//  val latestSchemaDescription = "added index to resourcechanges table on column lastUpdated"
   val latestSchemaDescription = "added indexes to resourcechanges table on columns orgid, id, category, and public"
+
   // Note: if you need to manually set the schema number in the db lower: update schema set schemaversion = 12 where id = 0;
 
   def isLatestSchemaVersion(fromSchemaVersion: Int) = fromSchemaVersion >= latestSchemaVersion

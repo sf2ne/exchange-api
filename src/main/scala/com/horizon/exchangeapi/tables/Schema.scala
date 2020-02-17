@@ -143,9 +143,10 @@ object SchemaTQ {
         sqlu"create index cat_index on resourcechanges (category)",
         sqlu"create index pub_index on resourcechanges (public)"
       )
-//      case 32 => DBIO.seq(   // v2.12.0
-//        sqlu"create index lu_index on resourcechanges (lastupdated)"
-//      )
+      case 32 => DBIO.seq(   // v2.12.0
+        sqlu"alter table resourcechanges alter column lastupdated type bigint using lastupdated::bigint",
+        sqlu"create index lu_index on resourcechanges (lastupdated)"
+      )
       // NODE: IF ADDING A TABLE, DO NOT FORGET TO ALSO ADD IT TO ExchangeApiTables.initDB and dropDB
       case other => logger.error("getUpgradeSchemaStep was given invalid step "+other); DBIO.seq()   // should never get here
     }

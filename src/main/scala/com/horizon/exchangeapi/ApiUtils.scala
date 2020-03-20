@@ -369,11 +369,15 @@ object ApiTime {
     } else nowTime // On the off chance its some weird length
   }
 
+  def nowUTCTimestamp: java.sql.Timestamp = java.sql.Timestamp.from(ZonedDateTime.now.withZoneSameInstant(ZoneId.of("UTC")).toInstant)
+
   /** Return UTC format of the time specified in seconds */
   def thenUTC(seconds: Long) = ZonedDateTime.ofInstant(Instant.ofEpochSecond(seconds), ZoneId.of("UTC")).toString
 
   /** Return UTC format of the time n seconds ago */
   def pastUTC(secondsAgo: Int) = ZonedDateTime.now.minusSeconds(secondsAgo).withZoneSameInstant(ZoneId.of("UTC")).toString
+
+  def pastUTCTimestamp(secondsAgo: Int): java.sql.Timestamp = java.sql.Timestamp.from(ZonedDateTime.now.minusSeconds(secondsAgo).withZoneSameInstant(ZoneId.of("UTC")).toInstant)
 
   /** Return UTC format of the time n seconds from now */
   def futureUTC(secondsFromNow: Int) = ZonedDateTime.now.plusSeconds(secondsFromNow).withZoneSameInstant(ZoneId.of("UTC")).toString

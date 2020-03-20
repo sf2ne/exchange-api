@@ -230,7 +230,7 @@ object ExchangeApiApp extends App with OrgsRoutes with UsersRoutes with NodesRou
   /** Task for trimming `resourcechanges` table */
   def trimResourceChanges(): Unit ={
     // Get the time for trimming rows from the table
-    val timeExpires = ApiTime.pastUTC(ExchConfig.getInt("api.resourceChanges.ttl"))
+    val timeExpires = ApiTime.pastUTCTimestamp(ExchConfig.getInt("api.resourceChanges.ttl"))
     db.run(ResourceChangesTQ.getRowsExpired(timeExpires).delete.asTry).map({
       case Success(v) =>
         if (v < 0) logger.info("I'm not sure what this means. Error? v<0")

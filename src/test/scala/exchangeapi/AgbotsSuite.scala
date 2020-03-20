@@ -164,10 +164,14 @@ class AgbotsSuite extends AnyFunSuite {
   }
 
   test("POST /orgs/"+orgid+"/changes - verify " + agbotId + " was created and stored") {
+    info("March 19 - 1")
     val time = ApiTime.pastUTC(secondsAgo)
     val input = ResourceChangesRequest(0, Some(time), maxRecords, None)
+    info(time)
+    info(write(input))
     val response = Http(URL+"/changes").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
     info("code: "+response.code)
+    info("body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)
     assert(!response.body.isEmpty)
     val parsedBody = parse(response.body).extract[ResourceChangesRespObject]

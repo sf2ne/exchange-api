@@ -30,20 +30,22 @@ import slick.jdbc.PostgresProfile.api._
 final case class GetUsersResponse(users: Map[String, User], lastIndex: Int)
 
 /** Input format for PUT /users/<username> */
-final case class PostPutUsersRequest(password: String, admin: Boolean, email: String) {
+final case class PostPutUsersRequest(password: String, admin: Boolean, hubAdmin: Option[Boolean], email: String) {
   require(password!=null && email!=null)
-  def getAnyProblem(identIsAdmin: Boolean): Option[String] = {
+  def getAnyProblem(identIsAdmin: Boolean, identisHubAdmin: Boolean, identisSuperUser: Boolean): Option[String] = {
     if (password == "" || email == "") Some(ExchMsg.translate("password.and.email.must.be.non.blank.when.creating.user"))
-    else if (admin && !identIsAdmin) Some(ExchMsg.translate("non.admin.user.cannot.make.admin.user")) // ensure that a user can't elevate himself to an admin user
+    else if ((admin && !identIsAdmin) || (admin && !identisHubAdmin)) Some(ExchMsg.translate("non.admin.user.cannot.make.admin.user")) // ensure that a user can't elevate himself to an admin user
+    else if (hubAdmin.isDefined && hubAdmin.get && !identisSuperUser) Some(ExchMsg.translate("only.super.users.make.hub.admins"))
     else None // None means no problems with input
   }
 }
 
-final case class PatchUsersRequest(password: Option[String], admin: Option[Boolean], email: Option[String]) {
+final case class PatchUsersRequest(password: Option[String], admin: Option[Boolean], hubAdmin: Option[Boolean], email: Option[String]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
-  def getAnyProblem(identIsAdmin: Boolean): Option[String] = {
+  def getAnyProblem(identIsAdmin: Boolean, identisHubAdmin: Boolean, identisSuperUser: Boolean): Option[String] = {
     if (password.isDefined && password.get == "") Some(ExchMsg.translate("password.cannot.be.set.to.empty.string"))
-    else if (admin.isDefined && admin.get && !identIsAdmin) Some(ExchMsg.translate("non.admin.user.cannot.make.admin.user")) // ensure that a user can't elevate himself to an admin user
+    else if (admin.isDefined && admin.get && (!identIsAdmin || !identisHubAdmin)) Some(ExchMsg.translate("non.admin.user.cannot.make.admin.user")) // ensure that a user can't elevate himself to an admin user
+    else if (hubAdmin.isDefined && hubAdmin.get && !identisSuperUser) Some(ExchMsg.translate("only.super.users.make.hub.admins"))
     else None // None means no problems with input
   }
 
@@ -58,6 +60,7 @@ final case class PatchUsersRequest(password: Option[String], admin: Option[Boole
       case _ => ;
     }
     admin match { case Some(admin2) => return ((for { u <- UsersTQ.rows if u.username === username } yield (u.username, u.admin, u.lastUpdated, u.updatedBy)).update((username, admin2, lastUpdated, updatedBy)), "admin"); case _ => ; }
+    hubAdmin match { case Some(hubAdmin2) => return ((for { u <- UsersTQ.rows if u.username === username } yield (u.username, u.hubAdmin, u.lastUpdated, u.updatedBy)).update((username, hubAdmin2, lastUpdated, updatedBy)), "hubAdmin"); case _ => ; }
     email match { case Some(email2) => return ((for { u <- UsersTQ.rows if u.username === username } yield (u.username, u.email, u.lastUpdated, u.updatedBy)).update((username, email2, lastUpdated, updatedBy)), "email"); case _ => ; }
     return (null, null)
   }
@@ -139,7 +142,7 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
         logger.debug(s"GET /orgs/$orgid/users identity: $ident")
         db.run(UsersTQ.getAllUsers(orgid).result).map({ list =>
           logger.debug(s"GET /orgs/$orgid/users result size: ${list.size}")
-          val users = list.map(e => e.username -> User(if (ident.isSuperUser) e.hashedPw else StrConstants.hiddenPw, e.admin, e.email, e.lastUpdated, e.updatedBy)).toMap
+          val users = list.map(e => e.username -> User(if (ident.isSuperUser) e.hashedPw else StrConstants.hiddenPw, e.admin, e.hubAdmin, e.email, e.lastUpdated, e.updatedBy)).toMap
           val code = if (users.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
           (code, GetUsersResponse(users, 0))
         })
@@ -197,7 +200,7 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
         }
         db.run(UsersTQ.getUser(compositeId).result).map({ list =>
           logger.debug(s"GET /orgs/$orgid/users/$realUsername result size: ${list.size}")
-          val users = list.map(e => e.username -> User(if (ident.isSuperUser) e.hashedPw else StrConstants.hiddenPw, e.admin, e.email, e.lastUpdated, e.updatedBy)).toMap
+          val users = list.map(e => e.username -> User(if (ident.isSuperUser) e.hashedPw else StrConstants.hiddenPw, e.admin, e.hubAdmin, e.email, e.lastUpdated, e.updatedBy)).toMap
           val code = if (users.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
           (code, GetUsersResponse(users, 0))
         })
@@ -270,11 +273,11 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
     logger.debug(s"Doing POST /orgs/$orgid/users/$username")
     val compositeId = OrgAndId(orgid, username).toString
     exchAuth(TUser(compositeId), Access.CREATE) { ident =>
-      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin)) {
+      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin, ident.isHubAdmin, ident.isSuperUser)) {
         complete({
           val updatedBy = ident match { case IUser(identCreds) => identCreds.id; case _ => "" }
           val hashedPw = Password.hash(reqBody.password)
-          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).insertUser().asTry).map({
+          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.hubAdmin.getOrElse(false), reqBody.email, ApiTime.nowUTC, updatedBy).insertUser().asTry).map({
             case Success(v) =>
               logger.debug("POST /orgs/" + orgid + "/users/" + username + " result: " + v)
               AuthCache.putUserAndIsAdmin(compositeId, hashedPw, reqBody.password, reqBody.admin)
@@ -324,11 +327,11 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
     logger.debug(s"Doing POST /orgs/$orgid/users/$username")
     val compositeId = OrgAndId(orgid, username).toString
     exchAuth(TUser(compositeId), Access.WRITE) { ident =>
-      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin)) {
+      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin, ident.isHubAdmin, ident.isSuperUser)) {
         complete({
           val updatedBy = ident match { case IUser(identCreds) => identCreds.id; case _ => "" }
           val hashedPw = Password.hash(reqBody.password)
-          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.email, ApiTime.nowUTC, updatedBy).updateUser().asTry).map({
+          db.run(UserRow(compositeId, orgid, hashedPw, reqBody.admin, reqBody.hubAdmin.getOrElse(false), reqBody.email, ApiTime.nowUTC, updatedBy).updateUser().asTry).map({
             case Success(n) =>
               logger.debug("PUT /orgs/" + orgid + "/users/" + username + " result: " + n)
               if (n.asInstanceOf[Int] > 0) {
@@ -381,7 +384,7 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
     logger.debug(s"Doing POST /orgs/$orgid/users/$username")
     val compositeId = OrgAndId(orgid, username).toString
     exchAuth(TUser(compositeId), Access.WRITE) { ident =>
-      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin)) {
+      validateWithMsg(reqBody.getAnyProblem(ident.isAdmin, ident.isHubAdmin, ident.isSuperUser)) {
         complete({
           val updatedBy = ident match { case IUser(identCreds) => identCreds.id; case _ => "" }
           val hashedPw = if (reqBody.password.isDefined) Password.hash(reqBody.password.get) else "" // hash the pw if that is what is being updated

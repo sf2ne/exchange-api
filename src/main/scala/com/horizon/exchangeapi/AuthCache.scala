@@ -228,7 +228,11 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     }
   } // end of class CacheBoolean
 
-  class CacheAdmin() extends CacheBoolean("admin", ExchConfig.getInt("api.cache.resourcesMaxSize")) {
+  class CacheAdmin() extends CacheBoolean("hubadmin", ExchConfig.getInt("api.cache.resourcesMaxSize")) {
+    def getDbAction(id: String): DBIO[Seq[Boolean]] = UsersTQ.getAdmin(id).result
+  }
+
+  class CacheHubAdmin() extends CacheBoolean("admin", ExchConfig.getInt("api.cache.resourcesMaxSize")) {
     def getDbAction(id: String): DBIO[Seq[Boolean]] = UsersTQ.getAdmin(id).result
   }
 
@@ -344,8 +348,16 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     usersAdmin.getOne(id)
   }
 
+  def getUserIsHubAdmin(id: String): Option[Boolean] = {
+    usersHubAdmin.getOne(id)
+  }
+
   def putUserIsAdmin(id: String, isAdmin: Boolean): Unit = {
     usersAdmin.putOne(id, isAdmin)
+  }
+
+  def putUserIsHubAdmin(id: String, isHubAdmin: Boolean): Unit = {
+    usersHubAdmin.putOne(id, isHubAdmin)
   }
 
   def putUserAndIsAdmin(id: String, hashedPw: String, unhashedPw: String, isAdmin: Boolean): Unit = {
@@ -353,9 +365,19 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     usersAdmin.putOne(id, isAdmin)
   }
 
+  def putUserAndIsHubAdmin(id: String, hashedPw: String, unhashedPw: String, isHubAdmin: Boolean): Unit = {
+    ids.putUser(id, hashedPw, unhashedPw)
+    usersHubAdmin.putOne(id, isHubAdmin)
+  }
+
   def removeUserAndIsAdmin(id: String): Unit = {
     ids.removeOne(id)
     usersAdmin.removeOne(id)
+  }
+
+  def removeUserAndIsHubAdmin(id: String): Unit = {
+    ids.removeOne(id)
+    usersHubAdmin.removeOne(id)
   }
 
   def getNodeOwner(id: String) = {
@@ -469,6 +491,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
   def clearAllCaches(includingIbmAuth: Boolean): Unit = {
     ids.clearCache()
     usersAdmin.clearCache()
+    usersHubAdmin.clearCache()
     nodesOwner.clearCache()
     agbotsOwner.clearCache()
     servicesOwner.clearCache()
@@ -484,6 +507,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     ExchConfig.createRoot(db)
     ids.init(db)
     usersAdmin.init(db)
+    usersHubAdmin.init(db)
     nodesOwner.init(db)
     agbotsOwner.init(db)
     servicesOwner.init(db)
@@ -498,6 +522,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
   // Note: when you add a cache here, also add it to the 2 methods above
   val ids = new CacheId()
   val usersAdmin = new CacheAdmin()
+  val usersHubAdmin = new CacheHubAdmin()
   val nodesOwner = new CacheOwnerNode()
   val agbotsOwner = new CacheOwnerAgbot()
   val servicesOwner = new CacheOwnerService()

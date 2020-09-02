@@ -140,9 +140,11 @@ trait UsersRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TUser(OrgAndId(orgid, "*").toString), Access.READ) { ident =>
       complete({
         logger.debug(s"GET /orgs/$orgid/users identity: $ident")
-        db.run(UsersTQ.getAllUsers(orgid).result).map({ list =>
+        var query = UsersTQ.getAllUsers(orgid)
+        if (ident.isHubAdmin) query = UsersTQ.getAllAdmins(orgid)
+        db.run(query.result).map({ list =>
           logger.debug(s"GET /orgs/$orgid/users result size: ${list.size}")
-          val users = list.map(e => e.username -> User(if (ident.isSuperUser) e.hashedPw else StrConstants.hiddenPw, e.admin, e.hubAdmin, e.email, e.lastUpdated, e.updatedBy)).toMap
+          val users = list.map(e => e.username -> User(if (ident.isSuperUser || ident.isHubAdmin) e.hashedPw else StrConstants.hiddenPw, e.admin, e.hubAdmin, e.email, e.lastUpdated, e.updatedBy)).toMap
           val code = if (users.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
           (code, GetUsersResponse(users, 0))
         })

@@ -54,6 +54,7 @@ object UsersTQ {
 
   //def getAllUsers(orgid: String) = rows.filter(_.username like orgid+"/%")
   def getAllUsers(orgid: String) = rows.filter(_.orgid === orgid)
+  def getAllAdmins(orgid: String) = rows.filter(_.orgid === orgid).filter(_.admin === true)
   def getUser(username: String) = rows.filter(_.username === username)
   def getPassword(username: String) = rows.filter(_.username === username).map(_.password)
   def getAdmin(username: String) = rows.filter(_.username === username).map(_.admin)

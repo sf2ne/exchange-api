@@ -16,10 +16,12 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import io.swagger.v3.oas.annotations._
 
 import scala.concurrent.ExecutionContext
-
 import com.horizon.exchangeapi.tables._
+import org.json4s
 import org.json4s._
 import org.json4s.jackson.Serialization.{read, write}
+import org.json4s.native.JsonMethods
+import org.json4s.jackson.JsonMethods.parse
 import slick.jdbc.PostgresProfile.api._
 
 import scala.collection.immutable._
@@ -319,6 +321,7 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
   def system: ActorSystem
   def logger: LoggingAdapter
   implicit def executionContext: ExecutionContext
+  protected implicit val jsonFormats: Formats = DefaultFormats
 
   def nodesRoutes: Route = nodesGetRoute ~ nodeGetRoute ~ nodePutRoute ~ nodePatchRoute ~ nodePostConfigStateRoute ~ nodeDeleteRoute ~ nodeHeartbeatRoute ~ nodeGetErrorsRoute ~ nodePutErrorsRoute ~ nodeDeleteErrorsRoute ~ nodeGetStatusRoute ~ nodePutStatusRoute ~ nodeDeleteStatusRoute ~ nodeGetPolicyRoute ~ nodePutPolicyRoute ~ nodeDeletePolicyRoute ~ nodeGetAgreementsRoute ~ nodeGetAgreementRoute ~ nodePutAgreementRoute ~ nodeDeleteAgreementsRoute ~ nodeDeleteAgreementRoute ~ nodePostMsgRoute ~ nodeGetMsgsRoute ~ nodeDeleteMsgRoute
 
@@ -688,6 +691,8 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
   def nodePutRoute: Route = (path("orgs" / Segment / "nodes" / Segment) & put & entity(as[PutNodesRequest])) { (orgid, id, reqBody) =>
     logger.debug(s"Doing PUT /orgs/$orgid/nodes/$id")
     val compositeId = OrgAndId(orgid, id).toString
+    var orgLimitMaxNodes = 0
+    var fivePercentWarning = false
     exchAuth(TNode(compositeId), Access.WRITE) { ident =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
@@ -725,28 +730,46 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
           })
           .flatMap({
             case Success(v) =>
-              // Check if node is using policy, then get num nodes already owned
+              // Check if node is using policy, then get org limits
               logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " policy related attrs: " + v)
               if (v.nonEmpty) {
                 val (existingPattern, existingPublicKey) = v.head
                 if (reqBody.pattern != "" && existingPattern == "" && existingPublicKey != "") DBIO.failed(new Throwable(ExchMsg.translate("not.pattern.when.policy"))).asTry
-                else NodesTQ.getNumOwned(owner).result.asTry // they are not trying to switch from policy to pattern, so we can continue
+                else OrgsTQ.getLimits(orgid).result.asTry // they are not trying to switch from policy to pattern, so we can continue
               }
-              else NodesTQ.getNumOwned(owner).result.asTry // node doesn't exit yet, we can continue
+              else OrgsTQ.getLimits(orgid).result.asTry // node doesn't exit yet, we can continue
             case Failure(t) => DBIO.failed(t).asTry
           })
-          .flatMap({
-            case Success(numOwned) =>
-              // Check if num nodes owned is below limit, then create/update node
-              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " num owned: " + numOwned)
-              val maxNodes = ExchConfig.getInt("api.limits.maxNodes")
-              if (maxNodes == 0 
-                  || numOwned <= maxNodes 
-                  || owner == "")  // when owner=="" we know it is only an update, otherwise we are not sure, but if they are already over the limit, stop them anyway
-                NodesTQ.getLastHeartbeat(compositeId).result.asTry
-              else 
-                DBIO.failed(new DBProcessingError(HttpCode.ACCESS_DENIED, ApiRespType.ACCESS_DENIED, ExchMsg.translate("over.max.limit.of.nodes", maxNodes))).asTry
+          .flatMap({ // get org limit of nodes
+            case Success(orgLimitsList) =>
+              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " orgLimits: " + orgLimitsList.head)
+              val limits : OrgLimits = parse(orgLimitsList.head).extract[OrgLimits]
+              orgLimitMaxNodes = limits.maxNodes
+              NodesTQ.getAllNodes(orgid).length.result.asTry
             case Failure(t) => DBIO.failed(t).asTry
+          })
+          .flatMap({ // get total nodes in org
+            case Success(totalNodes) =>
+              logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " total number of nodes in org: " + totalNodes)
+              if(orgLimitMaxNodes == 0 || totalNodes <= orgLimitMaxNodes) NodesTQ.getNumOwned(owner).result.asTry // if the org limit for maxNodes is 0 that means there is no limit
+              else if ((orgLimitMaxNodes-totalNodes) <= orgLimitMaxNodes*.05) { // if we are within 5% of the limit
+                fivePercentWarning = true // used for warning later
+                NodesTQ.getNumOwned(owner).result.asTry
+              } else DBIO.failed(new DBProcessingError(HttpCode.ACCESS_DENIED, ApiRespType.ACCESS_DENIED, ExchMsg.translate("over.org.max.limit.of.nodes", orgLimitMaxNodes))).asTry
+            case Failure(t) => DBIO.failed(t).asTry
+          })
+        .flatMap({
+          case Success(numOwned) =>
+            // Check if num nodes owned is below limit, then create/update node
+            logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " num owned: " + numOwned)
+            val maxNodes = ExchConfig.getInt("api.limits.maxNodes")
+            if (maxNodes == 0
+                || numOwned <= maxNodes
+                || owner == "")  // when owner=="" we know it is only an update, otherwise we are not sure, but if they are already over the limit, stop them anyway
+              NodesTQ.getLastHeartbeat(compositeId).result.asTry
+            else
+              DBIO.failed(new DBProcessingError(HttpCode.ACCESS_DENIED, ApiRespType.ACCESS_DENIED, ExchMsg.translate("over.max.limit.of.nodes", maxNodes))).asTry
+          case Failure(t) => DBIO.failed(t).asTry
           })
           .flatMap({
             case Success(lastHeartbeat) => 
@@ -777,7 +800,8 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
               AuthCache.putNodeAndOwner(compositeId, Password.hash(reqBody.token), reqBody.token, owner)
               //AuthCache.ids.putNode(id, hashedTok, node.token)
               //AuthCache.nodesOwner.putOne(id, owner)
-              (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("node.added.or.updated")))
+              if (fivePercentWarning) (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("num.nodes.near.org.limit")))
+              else (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("node.added.or.updated")))
             case Failure(t: DBProcessingError) =>
               t.toComplete
             case Failure(t: org.postgresql.util.PSQLException) =>

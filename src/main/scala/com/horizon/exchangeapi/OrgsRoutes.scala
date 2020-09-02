@@ -9,7 +9,7 @@ import akka.event.LoggingAdapter
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import com.horizon.exchangeapi.auth.DBProcessingError
+import com.horizon.exchangeapi.auth.{BadInputException, DBProcessingError}
 
 import scala.concurrent.ExecutionContext
 
@@ -51,15 +51,15 @@ final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int)
 final case class GetOrgAttributeResponse(attribute: String, value: String)
 
 /** Input format for PUT /orgs/<org-id> */
-final case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]], heartbeatIntervals: Option[NodeHeartbeatIntervals]) {
+final case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]], limits: Option[OrgLimits], heartbeatIntervals: Option[NodeHeartbeatIntervals]) {
   require(label!=null && description!=null)
   protected implicit val jsonFormats: Formats = DefaultFormats
   def getAnyProblem: Option[String] = None
 
-  def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiUtils.asJValue(ts)), write(heartbeatIntervals))
+  def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiUtils.asJValue(ts)), write(limits), write(heartbeatIntervals))
 }
 
-final case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]], heartbeatIntervals: Option[NodeHeartbeatIntervals]) {
+final case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]], limits: Option[OrgLimits], heartbeatIntervals: Option[NodeHeartbeatIntervals]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
 
   def getAnyProblem: Option[String] = {
@@ -74,24 +74,27 @@ final case class PatchOrgRequest(orgType: Option[String], label: Option[String],
     label match { case Some(lab) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.label, d.lastUpdated)).update((orgId, lab, lastUpdated)), "label"); case _ => ; }
     description match { case Some(desc) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.description, d.lastUpdated)).update((orgId, desc, lastUpdated)), "description"); case _ => ; }
     heartbeatIntervals match { case Some(hbIntervals) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.heartbeatIntervals, d.lastUpdated)).update((orgId, write(hbIntervals), lastUpdated)), "heartbeatIntervals"); case _ => ; }
-    tags match {
-      case Some(ts) =>
-        val (deletes, updates) = ts.partition {
-          case (_, v) => v.isEmpty
-        }
-        val dbUpdates =
-          if (updates.isEmpty) Seq()
-          else Seq(sqlu"update orgs set tags = coalesce(tags, '{}'::jsonb) || ${ApiUtils.asJValue(updates)} where orgid = $orgId")
+    tags match { case Some(ts) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.tags, d.lastUpdated)).update((orgId, Some(ApiUtils.asJValue(ts)), lastUpdated)), "tags"); case _ => ; }
+    limits match { case Some(lim) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.limits, d.lastUpdated)).update((orgId, write(lim), lastUpdated)), "limits"); case _ => ; }
 
-        val dbDeletes =
-          for (tag <- deletes.keys.toSeq) yield {
-            sqlu"update orgs set tags = tags - $tag where orgid = $orgId"
-          }
-        val allChanges = dbUpdates ++ dbDeletes
-        return (DBIO.sequence(allChanges).map(counts => counts.sum), "tags")
-      case _ =>
-    }
-    return (null, null)
+//    tags match {
+//      case Some(ts) =>
+//        val (deletes, updates) = ts.partition {
+//          case (_, v) => v.isEmpty
+//        }
+//        val dbUpdates =
+//          if (updates.isEmpty) Seq()
+//          else Seq(sqlu"update orgs set tags = coalesce(tags, '{}'::jsonb) || ${ApiUtils.asJValue(updates)} where orgid = $orgId")
+//
+//        val dbDeletes =
+//          for (tag <- deletes.keys.toSeq) yield {
+//            sqlu"update orgs set tags = tags - $tag where orgid = $orgId"
+//          }
+//        val allChanges = dbUpdates ++ dbDeletes
+//        return (DBIO.sequence(allChanges).map(counts => counts.sum), "tags")
+//      case _ =>
+//    }
+    (null, null)
   }
 }
 
@@ -364,6 +367,10 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TOrg(""), Access.CREATE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
+          // verify org limits
+          val exchangeMaxNodes = ExchConfig.getInt("api.limits.maxNodes")
+          val orgMaxNodes = reqBody.limits.getOrElse(OrgLimits(0)).maxNodes
+          if (orgMaxNodes > exchangeMaxNodes) (HttpCode.BAD_INPUT, ApiRespType.BAD_INPUT, ExchMsg.translate("org.limits.cannot.be.over.exchange.limits", orgMaxNodes, exchangeMaxNodes))
           db.run(reqBody.toOrgRow(orgId).insert.asTry.flatMap({
             case Success(n) =>
               // Add the resource to the resourcechanges table
@@ -430,6 +437,10 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TOrg(orgId), access) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
+          // verify org limits
+          val exchangeMaxNodes = ExchConfig.getInt("api.limits.maxNodes")
+          val orgMaxNodes = reqBody.limits.getOrElse(OrgLimits(0)).maxNodes
+          if (orgMaxNodes > exchangeMaxNodes) (HttpCode.BAD_INPUT, ApiRespType.BAD_INPUT, ExchMsg.translate("org.limits.cannot.be.over.exchange.limits", orgMaxNodes, exchangeMaxNodes))
           db.run(reqBody.toOrgRow(orgId).update.asTry.flatMap({
             case Success(n) =>
               // Add the resource to the resourcechanges table
@@ -502,6 +513,12 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
         complete({
           val (action, attrName) = reqBody.getDbUpdate(orgId)
           if (action == null) (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("no.valid.org.attr.specified")))
+          // verify org limits
+          if (attrName == "limits") {
+            val exchangeMaxNodes = ExchConfig.getInt("api.limits.maxNodes")
+            val orgMaxNodes = reqBody.limits.getOrElse(OrgLimits(0)).maxNodes
+            if (orgMaxNodes > exchangeMaxNodes) (HttpCode.BAD_INPUT, ApiRespType.BAD_INPUT, ExchMsg.translate("org.limits.cannot.be.over.exchange.limits", orgMaxNodes, exchangeMaxNodes))
+          }
           else db.run(action.transactionally.asTry.flatMap({
             case Success(n) =>
               // Add the resource to the resourcechanges table
@@ -710,14 +727,21 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
   )
   def orgPostNodesServiceRoute: Route = (path("orgs" / Segment / "search" / "nodes" / "service") & post & entity(as[PostServiceSearchRequest])) { (orgid, reqBody) =>
     logger.debug(s"Doing POST /orgs/$orgid/search/nodes/service")
-    exchAuth(TNode(OrgAndId(orgid,"*").toString),Access.READ) { _ =>
+    exchAuth(TNode(OrgAndId(orgid,"#").toString),Access.READ) { ident =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
           val service = reqBody.serviceURL+"_"+reqBody.serviceVersion+"_"+reqBody.serviceArch
           logger.debug("POST /orgs/"+orgid+"/search/nodes/service criteria: "+reqBody.toString)
           val orgService = "%|"+reqBody.orgid+"/"+service+"|%"
+          var qFilter = NodesTQ.rows.filter(_.orgid === orgid)
+          ident match {
+            case _: IUser =>
+              // if the caller is a normal user then we need to only return node the caller owns
+              if(!ident.isSuperUser || !ident.isAdmin) qFilter = qFilter.filter(_.owner === ident.identityString)
+            case _ => ; // nodes can't call this route and agbots don't need an additional filter
+          }
           val q = for {
-            (n, _) <- (NodesTQ.rows.filter(_.orgid === orgid)) join (NodeStatusTQ.rows.filter(_.runningServices like orgService)) on (_.id === _.nodeId)
+            (n, _) <- qFilter join (NodeStatusTQ.rows.filter(_.runningServices like orgService)) on (_.id === _.nodeId)
           } yield (n.id, n.lastHeartbeat)
 
           db.run(q.result).map({ list =>
@@ -809,7 +833,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
     )
   )
   def orgPostNodesHealthRoute: Route = (path("orgs" / Segment / "search" / "nodehealth") & post & entity(as[PostNodeHealthRequest])) { (orgid, reqBody) =>
-    logger.debug(s"Doing POST /orgs/$orgid/search/nodes/service")
+    logger.debug(s"Doing POST /orgs/$orgid/search/nodehealth")
     exchAuth(TNode(OrgAndId(orgid,"*").toString),Access.READ) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
@@ -819,6 +843,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
             Note about Slick usage: joinLeft returns node rows even if they don't have any agreements (which means the agreement cols are Option() )
           */
           val lastTime = if (reqBody.lastTime != "") reqBody.lastTime else ApiTime.beginningUTC
+
           val q = for {
             (n, a) <- NodesTQ.rows.filter(_.orgid === orgid).filter(_.pattern === "").filter(_.lastHeartbeat >= lastTime) joinLeft NodeAgreementsTQ.rows on (_.id === _.nodeId)
           } yield (n.id, n.lastHeartbeat, a.map(_.agId), a.map(_.lastUpdated))

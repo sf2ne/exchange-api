@@ -256,13 +256,28 @@ Now you can disable root by setting `api.root.enabled` to `false` in `/etc/horiz
     - detect if a pattern is updated with service that has userInput w/o default values, and give warning
     - Consider changing all creates to POST, and update (via put/patch) return codes to 200
 
-## Changes in 2.39.0
+## Changes in 2.42.0
 
 - Added Hub Admin Role and Permissions
 - Issue 395: `GET /v1/admin/orgstatus` route added for UI Hub Admin Dashboard
 - Limits field added to org resource
 - Issue 388: Fixed permissions settings of `/search/nodes/service`
 - Issue 392: Fixed issues with org PATCH route
+
+## Changes in 2.41.0
+
+- Issue 383: Extended route to return node policy details as well.
+
+## Changes in 2.40.0
+
+- Issue 310 - Post policy search now supports pagination of results. The route is more efficient about dividing work between multiple Agbots.
+  - Refactored post pattern search, no pagination added at this time.
+  - Refactored policy search test cases. Policy search now has its own test suite.
+  - A table for handling pagination offsets an Agbot sessions specific to policy search has been added to the database.
+
+## Changes in 2.39.0
+
+- Issue 383: Implemented "GET /v1/orgs/{orgid}/node-details" route.
 
 ## Changes in 2.38.0
 

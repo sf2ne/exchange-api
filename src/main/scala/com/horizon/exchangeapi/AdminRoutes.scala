@@ -330,7 +330,7 @@ trait AdminRoutes extends JacksonSupport with AuthenticationSupport {
       new responses.ApiResponse(responseCode = "403", description = "access denied")))
   def adminGetOrgStatusRoute: Route = (path("admin" / "orgstatus") & get) {
     logger.debug("Doing GET /admin/status")
-    exchAuth(TAction(), Access.STATUS) { _ =>
+    exchAuth(TAction(), Access.ORGSTATUS) { _ =>
       complete({
         val orgStatusResp = new AdminOrgStatus()
         //perf: use a DBIO.sequence instead. It does essentially the same thing, but more efficiently

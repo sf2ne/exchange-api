@@ -58,6 +58,7 @@ object Access extends Enumeration {
   val WRITE_MY_ORG = Value("WRITE_MY_ORG")
   val SET_IBM_ORG_TYPE = Value("SET_IBM_ORG_TYPE")
   val STATUS = Value("STATUS")
+  val ORGSTATUS = Value("ORGSTATUS")
   val UTILITIES = Value("UTILITIES")
   val MAXCHANGEID = Value("MAXCHANGEID")
   val CREATE_ORGS = Value("CREATE_ORGS")

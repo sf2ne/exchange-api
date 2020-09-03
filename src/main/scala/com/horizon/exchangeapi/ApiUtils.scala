@@ -215,6 +215,7 @@ object ExchConfig {
   def logger = ExchangeApi.defaultLogger
 
   var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
+  var hubAdminHashedPw = ""
 
   // Tries to load the user's external config file
   // Note: logger doesn't have a valid value at the time of this call
@@ -273,17 +274,30 @@ object ExchConfig {
   def createRootInCache(): Unit = {
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")
+    val hubadminpw = if (config.hasPath("api.hubadmin")) config.getString("api.hubadmin.password") else ""
+    val hubAdminUsername = if (config.hasPath("api.hubadmin")) "root/" + config.getString("api.hubAdmin.username") else "root/hubadmin"
     if (rootpw == "" || !rootIsEnabled) {
       logger.warning("Root password is not specified in config.json or is not enabled. You will not be able to do exchange operations that require root privilege.")
       return
+    }
+    if (!config.hasPath("api.hubadmin")) {
+      logger.warning("Default Hub Admin credentials not set, default hub Admin will be made with insecure credentials")
     }
     if (rootHashedPw == "") {
       // this is the 1st time, we need to hash and save it
       rootHashedPw = Password.hashIfNot(rootpw)
     }
+    if (hubAdminHashedPw == "") {
+      // this is the 1st time, we need to hash and save it
+      hubAdminHashedPw = Password.hashIfNot(hubadminpw)
+    }
     val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw // this is the 1 case in which an id cache entry could end up with a blank unhashed pw/tok
     AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw)
     logger.info("Root user from config.json added to the in-memory authentication cache")
+
+    val hubAdminUnhashedPw = if (Password.isHashed(hubadminpw)) "" else hubadminpw // this is the 1 case in which an id cache entry could end up with a blank unhashed pw/tok
+    AuthCache.putUser(hubAdminUsername, hubAdminHashedPw, hubAdminUnhashedPw)
+    logger.info("Hub Admin user from config.json added to the in-memory authentication cache")
   }
 
   //todo: investigate if this does the right things when called from POST /admin/reload
@@ -300,6 +314,9 @@ object ExchConfig {
     // If the root pw is set in the config file, create or update the root user in the db to match
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")
+    val hubadminpw = if (config.hasPath("api.hubadmin.password")) config.getString("api.hubadmin.password") else ""
+    val hubAdminUsername = if (config.hasPath("api.hubadmin.username")) "root/" + config.getString("api.hubAdmin.username") else "root/hubadmin"
+
     if (rootpw == "" || !rootIsEnabled) {
       rootHashedPw = "" // this should already be true, but just make sure
     } else { // there is a real, enabled root pw
@@ -308,20 +325,35 @@ object ExchConfig {
       val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw // this is the 1 case in which an id cache entry could not have an unhashed pw/tok
       AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw) // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
     }
+    
+    if (hubadminpw == "") {
+      hubAdminHashedPw = "" // this should already be true, but just make sure
+    } else { // there is a real, enabled hubAdmin pw
+      if (hubAdminHashedPw == "") logger.error("Internal Error: hubAdminHashedPw not already set")
+      val hubAdminUnhashedPw = if (Password.isHashed(hubadminpw)) "" else hubadminpw // this is the 1 case in which an id cache entry could not have an unhashed pw/tok
+      AuthCache.putUser(hubAdminUsername, hubAdminHashedPw, hubAdminUnhashedPw) // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
+    }
     // Put the root org and user in the db, even if root is disabled (because in that case we want all exchange instances to know the root pw is blank
     //val rootemail = config.getString("api.root.email")
     val rootemail = ""
+    val hubAdminemail = ""
     // Create the root org, create the IBM org, and create the root user (all only if necessary)
-    db.run(OrgRow("root", "", "Root Org", "Organization for the root user only", ApiTime.nowUTC, None, "").upsert.asTry.flatMap({ xs =>
+    db.run(OrgRow("root", "", "Root Org", "Organization for the root user only", ApiTime.nowUTC, None, "", "").upsert.asTry.flatMap({ xs =>
       logger.debug("Upsert /orgs/root result: " + xs.toString)
       xs match {
-        case Success(_) => UserRow(Role.superUser, "root", rootHashedPw, admin = true, rootemail, ApiTime.nowUTC, Role.superUser).upsertUser.asTry // next action
+        case Success(_) => UserRow(Role.superUser, "root", rootHashedPw, admin = true, hubAdmin = true, rootemail, ApiTime.nowUTC, Role.superUser).upsertUser.asTry // next action
         case Failure(t) => DBIO.failed(t).asTry // rethrow the error to the next step
       }
     }).flatMap({ xs =>
       logger.debug("Upsert /orgs/root/users/root (root) result: " + xs.toString)
       xs match {
-        case Success(_) => OrgRow("IBM", "IBM", "IBM Org", "Organization containing IBM services", ApiTime.nowUTC, None, "").upsert.asTry // next action
+        case Success(_) => UserRow(hubAdminUsername, "root", hubAdminHashedPw, admin = false, hubAdmin = true, hubAdminemail, ApiTime.nowUTC, hubAdminUsername).upsertUser.asTry // next action
+        case Failure(t) => DBIO.failed(t).asTry // rethrow the error to the next step
+      }
+    }).flatMap({ xs =>
+      logger.debug("Upsert /orgs/root/users/root (root) result: " + xs.toString)
+      xs match {
+        case Success(_) => OrgRow("IBM", "IBM", "IBM Org", "Organization containing IBM services", ApiTime.nowUTC, None, "", "").upsert.asTry // next action
         case Failure(t) => DBIO.failed(t).asTry // rethrow the error to the next step
       }
     })).map({ xs =>

@@ -62,11 +62,11 @@ class AdminSuite extends AnyFunSuite with BeforeAndAfterAll {
   implicit val FORMATS            = DefaultFormats // Brings in default date formats etc.
 
   override def beforeAll() {
-    Http(URL + "/orgs/" + ORGS(0)).postData(write(PostPutOrgRequest(None, (ORGS(0)), "AdminSuite Test Organization", None, None))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+    Http(URL + "/orgs/" + ORGS(0)).postData(write(PostPutOrgRequest(None, (ORGS(0)), "AdminSuite Test Organization", None, None, None))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
 
     for (org <- ORGS) {
       for (user <- USERS) {
-        Http(URL + "/orgs/" + org + "/users/" + user).postData(write(PostPutUsersRequest("password", user.endsWith("admin"), user + "@host.domain"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+        Http(URL + "/orgs/" + org + "/users/" + user).postData(write(PostPutUsersRequest("password", user.endsWith("admin"), Some(false), user + "@host.domain"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
       }
       
       Http(URL + "/orgs/" + org + "/agbots/" + AGBOT).postData(write(PutAgbotsRequest("password", AGBOT, None, "password"))).method("put").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString

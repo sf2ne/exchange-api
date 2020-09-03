@@ -43,7 +43,7 @@ class OrgsSuite extends AnyFunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.DELETED.intValue || response.code === HttpCode.NOT_FOUND.intValue)
 
-    val input = PostPutOrgRequest(None, "My Org", "desc", None, None)
+    val input = PostPutOrgRequest(None, "My Org", "desc", None, None, None)
     response = Http(URL+"/"+orgid).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)
@@ -61,7 +61,7 @@ class OrgsSuite extends AnyFunSuite {
   }
 
   test("PUT /orgs/"+orgid+" - update org") {
-    val input = PostPutOrgRequest(None, "My Org", "desc", None, None)
+    val input = PostPutOrgRequest(None, "My Org", "desc", None, None, None)
     val response = Http(URL+"/"+orgid).postData(write(input)).method("put").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)
@@ -80,7 +80,7 @@ class OrgsSuite extends AnyFunSuite {
 
   test("PATCH /orgs/"+orgid+" - update org") {
     val nodeHeartbeatInterval = NodeHeartbeatIntervals(5, 5, 5)
-    val input = PatchOrgRequest(None, None, Some("Patched My Org"), None, Some(nodeHeartbeatInterval))
+    val input = PatchOrgRequest(None, None, Some("Patched My Org"), None, None, Some(nodeHeartbeatInterval))
     val response = Http(URL+"/"+orgid).postData(write(input)).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)

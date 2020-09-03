@@ -325,7 +325,7 @@ object ExchConfig {
       val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw // this is the 1 case in which an id cache entry could not have an unhashed pw/tok
       AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw) // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
     }
-    
+
     if (hubadminpw == "") {
       hubAdminHashedPw = "" // this should already be true, but just make sure
     } else { // there is a real, enabled hubAdmin pw

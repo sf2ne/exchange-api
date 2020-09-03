@@ -246,29 +246,29 @@ class NodesSuite extends AnyFunSuite {
   }
 
   test("POST /orgs/"+orgid+" - create org to use for this test suite") {
-    val input = PostPutOrgRequest(None, "My Org", "desc", None, None)
+    val input = PostPutOrgRequest(None, "My Org", "desc", None, None, None)
     val response = Http(URL).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)
   }
 
   test("POST /orgs/"+orgid2+" - create 2nd org to use for this test suite") {
-    val input = PostPutOrgRequest(None, "My 2nd Org", "desc", None, None)
+    val input = PostPutOrgRequest(None, "My 2nd Org", "desc", None, None, None)
     val response = Http(URL2).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)
   }
 
   test("POST /orgs/" + orgid + "/users/" + user + " - normal") {
-    Http(URL + "/users/" + user).postData(write(PostPutUsersRequest(pw, admin = false, user + "@hotmail.com"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+    Http(URL + "/users/" + user).postData(write(PostPutUsersRequest(pw, admin = false, Some(false), user + "@hotmail.com"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     
-    Http(URL + "/users/u2").postData(write(PostPutUsersRequest("u2pw", admin = false, "u2@hotmail.com"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+    Http(URL + "/users/u2").postData(write(PostPutUsersRequest("u2pw", admin = false, Some(false), "u2@hotmail.com"))).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     
     assert(true)
   }
 
   test("POST /orgs/"+orgid2+"/users/"+user+" - normal") {
-    val input = PostPutUsersRequest(pw, admin = false, user+"@hotmail.com")
+    val input = PostPutUsersRequest(pw, admin = false, Some(false), user+"@hotmail.com")
     val response = Http(URL2+"/users/"+user).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK.intValue)

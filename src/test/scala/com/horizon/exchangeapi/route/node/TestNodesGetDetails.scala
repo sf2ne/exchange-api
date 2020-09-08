@@ -136,14 +136,16 @@ class TestNodesGetDetails extends AnyFunSuite with BeforeAndAfterAll {
                lastUpdated        = ApiTime.nowUTC,
                orgId              = "TestNodesGetDetails",
                orgType            = "",
-               tags               = None),
+               tags               = None,
+               limits             = ""),
         OrgRow(heartbeatIntervals = "",
                description        = "",
                label              = "",
                lastUpdated        = ApiTime.nowUTC,
                orgId              = "TestNodesGetDetails2",
                orgType            = "",
-               tags               = None))
+               tags               = None,
+               limits             = ""))
   private val TESTUSERS: Seq[UserRow] =
     Seq(UserRow(admin       = false,
                 email       = "",
@@ -151,21 +153,24 @@ class TestNodesGetDetails extends AnyFunSuite with BeforeAndAfterAll {
                 lastUpdated = ApiTime.nowUTC,
                 orgid       = "TestNodesGetDetails",
                 updatedBy   = "",
-                username    = "TestNodesGetDetails/u1"),
+                username    = "TestNodesGetDetails/u1",
+                hubAdmin    = false),
         UserRow(admin       = false,
                 email       = "",
                 hashedPw    = "$2a$10$0EOlHl1mb2THvz3f/AnyWOV6ivUMItcQKLTzltNLmrdiLn.VCgavy",
                 lastUpdated = ApiTime.nowUTC,
                 orgid       = "TestNodesGetDetails",
                 updatedBy   = "",
-                username    = "TestNodesGetDetails/u2"),
+                username    = "TestNodesGetDetails/u2",
+                hubAdmin    = false),
         UserRow(admin       = false,
                 email       = "",
                 hashedPw    = "",
                 lastUpdated = ApiTime.nowUTC,
                 orgid       = "TestNodesGetDetails2",
                 updatedBy   = "",
-                username    = "TestNodesGetDetails2/u3"))
+                username    = "TestNodesGetDetails2/u3",
+                hubAdmin = false))
   
   // Build test harness.
   override def beforeAll {

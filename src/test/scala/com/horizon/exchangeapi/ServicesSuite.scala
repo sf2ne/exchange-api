@@ -180,12 +180,12 @@ class ServicesSuite extends AnyFunSuite {
 
     val devInput = PutNodesRequest(nodeToken, "bc dev test", None, "", None, None, None, None, "", None, None)
     val devResponse = Http(URL+"/nodes/"+nodeId).postData(write(devInput)).method("put").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
-    info("code: "+devResponse.code)
+    info("code: "+devResponse.code+", response.body: "+devResponse.body)
     assert(devResponse.code === HttpCode.PUT_OK.intValue)
 
     val devInput2 = PutNodesRequest(nodeToken2, "bc dev test", None, "", None, None, None, None, "", None, None)
     val devResponse2 = Http(URL+"/nodes/"+nodeId2).postData(write(devInput2)).method("put").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
-    info("code: "+devResponse2.code)
+    info("code: "+devResponse2.code+", response.body: "+devResponse2.body)
     assert(devResponse2.code === HttpCode.PUT_OK.intValue)
 
     val agbotInput = PutAgbotsRequest(agbotToken, "agbot"+agbotId+"-norm", None, "ABC")

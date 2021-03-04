@@ -744,6 +744,7 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TNode(compositeId), Access.WRITE) { ident =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
+          if(id == "iamapikey" || id == "iamtoken") (HttpCode.ACCESS_DENIED, ApiResponse(ApiRespType.ACCESS_DENIED, ExchMsg.translate("nodeid.not.allowed")))
           var orgLimitMaxNodes = 0
           var fivePercentWarning = false
           val owner: String = ident match { case IUser(creds) => creds.id; case _ => "" }

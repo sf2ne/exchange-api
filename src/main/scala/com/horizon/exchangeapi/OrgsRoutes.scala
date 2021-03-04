@@ -590,6 +590,7 @@ trait OrgsRoutes extends JacksonSupport with AuthenticationSupport {
       complete({
         var orgFound = true
         // remove does *not* throw an exception if the key does not exist
+        if(orgId == "root") (HttpCode.ACCESS_DENIED, ApiResponse(ApiRespType.ACCESS_DENIED, ExchMsg.translate("cannot.delete.root.user")))
         db.run(OrgsTQ.getOrgid(orgId).delete.transactionally.asTry.flatMap({
           case Success(v) =>
             logger.debug(s"DELETE /orgs/$orgId result: $v")

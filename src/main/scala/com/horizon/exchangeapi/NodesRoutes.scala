@@ -835,14 +835,14 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
                   case 0 => val lastHB = if (noHB) None else Some(ApiTime.nowUTC)
                     (if (owner == "")
                         // It seems like this case is an error (node doesn't exist yet, and client is not a user). The update will fail, but probably not with an error that will really explain what they did wrong.
-                        reqBody.getDbUpdate(compositeId, orgid, owner, Password.hash(reqBody.token), lastHB)
+                        reqBody.getDbUpdate(compositeId, orgid, owner, Password.fastHash(reqBody.token), lastHB)
                       else 
-                        reqBody.getDbUpsert(compositeId, orgid, owner, Password.hash(reqBody.token), lastHB)).transactionally.asTry
+                        reqBody.getDbUpsert(compositeId, orgid, owner, Password.fastHash(reqBody.token), lastHB)).transactionally.asTry
                   case 1 => val lastHB = if (noHB) lastHeartbeat.head else Some(ApiTime.nowUTC)
                     (if (owner == "") 
-                        reqBody.getDbUpdate(compositeId, orgid, owner, Password.hash(reqBody.token), lastHB)
+                        reqBody.getDbUpdate(compositeId, orgid, owner, Password.fastHash(reqBody.token), lastHB)
                       else 
-                        reqBody.getDbUpsert(compositeId, orgid, owner, Password.hash(reqBody.token), lastHB)).transactionally.asTry
+                        reqBody.getDbUpsert(compositeId, orgid, owner, Password.fastHash(reqBody.token), lastHB)).transactionally.asTry
                   case _ => DBIO.failed(new DBProcessingError(HttpCode.INTERNAL_ERROR, ApiRespType.INTERNAL_ERROR, ExchMsg.translate("node.not.inserted.or.updated", compositeId, "Unexpected result"))).asTry
                 }
             case Failure(t) => DBIO.failed(t).asTry
@@ -857,7 +857,7 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
             case Success(v) =>
               // Check creation/update of node, and other errors
               logger.debug("PUT /orgs/" + orgid + "/nodes/" + id + " updating resource status table: " + v)
-              AuthCache.putNodeAndOwner(compositeId, Password.hash(reqBody.token), reqBody.token, owner)
+              AuthCache.putNodeAndOwner(compositeId, Password.fastHash(reqBody.token), reqBody.token, owner)
               if (fivePercentWarning) (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("num.nodes.near.org.limit", orgid, orgMaxNodes)))
               else (HttpCode.PUT_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("node.added.or.updated")))
             case Failure(t: DBProcessingError) =>
@@ -949,7 +949,7 @@ trait NodesRoutes extends JacksonSupport with AuthenticationSupport {
     exchAuth(TNode(compositeId), Access.WRITE) { _ =>
       validateWithMsg(reqBody.getAnyProblem) {
         complete({
-          val hashedPw: String = if (reqBody.token.isDefined) Password.hash(reqBody.token.get) else "" // hash the token if that is what is being updated
+          val hashedPw: String = if (reqBody.token.isDefined) Password.fastHash(reqBody.token.get) else "" // hash the token if that is what is being updated
           val (action, attrName) = reqBody.getDbUpdate(compositeId, hashedPw)
           if (action == null) (HttpCode.BAD_INPUT, ApiResponse(ApiRespType.BAD_INPUT, ExchMsg.translate("no.valid.note.attr.specified")))
           else {
